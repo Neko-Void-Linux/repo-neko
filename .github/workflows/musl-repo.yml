@@ -36,17 +36,15 @@ jobs:
       - name: Build and Sign packages in Void Musl Container
         env:
           XBPS_PRIVKEY: ${{ secrets.XBPS_PRIVATE_KEY }}
-        # Montamos la carpeta en un contenedor 100% musl y compilamos nativamente
         run: |
           echo "$XBPS_PRIVKEY" > /tmp/void-packages/privkey.pem
           
           docker run --rm -v /tmp/void-packages:/void-packages ghcr.io/void-linux/void-musl:latest /bin/sh -c "
             xbps-install -Syu xbps && xbps-install -Syu && \
-            xbps-install -y base-devel xtools tar gcc make && \
+            xbps-install -y base-devel xtools tar gcc make shadow && \
             useradd -m builder && \
             chown -R builder:builder /void-packages && \
             
-            # Compilamos NATIVAMENTE sin la bandera -a
             su - builder -c 'cd /void-packages && ./xbps-src binary-bootstrap' && \
             su - builder -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
             su - builder -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
@@ -54,13 +52,11 @@ jobs:
             su - builder -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
             su - builder -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
             
-            # Firmamos e indexamos dentro del entorno void
             cd /void-packages/hostdir/binpkgs && \
             xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps && \
             xbps-rindex -a *.xbps && \
             xbps-rindex --sign --signedby 'javierc' --privkey /void-packages/privkey.pem . && \
             
-            # Ajustamos permisos para que Ubuntu pueda subir los archivos sin problema
             chmod -R 777 /void-packages/hostdir/binpkgs
           "
           
