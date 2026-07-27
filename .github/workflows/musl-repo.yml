@@ -51,11 +51,11 @@ jobs:
       - name: Build package
         run: |
           su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg Neko-Wizard"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kasha-installer"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg neko-icons"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg neko-themes"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg neko-backgrounds"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src -a x86_64-musl pkg Neko-Wizard"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src -a x86_64-musl pkg kasha-installer"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src -a x86_64-musl pkg neko-icons"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src -a x86_64-musl pkg neko-themes"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src -a x86_64-musl pkg neko-backgrounds"
       - name: Sign packages and index
         run: |
           echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
