@@ -41,7 +41,7 @@ jobs:
           
           docker run --rm -v /tmp/void-packages:/void-packages ghcr.io/void-linux/void-musl:latest /bin/sh -c "
             xbps-install -Syu xbps && xbps-install -Syu && \
-            xbps-install -y base-devel xtools tar gcc make shadow && \
+            xbps-install -y base-devel xtools tar gcc make shadow util-linux && \
             useradd -m builder && \
             chown -R builder:builder /void-packages && \
             
@@ -61,7 +61,7 @@ jobs:
           "
           
           rm -f /tmp/void-packages/privkey.pem
-
+          
       - name: Deploy to SourceForge
         env:
           SFTP_USER: ${{ secrets.SFTP_USERNAME }}
