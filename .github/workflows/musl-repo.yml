@@ -45,13 +45,13 @@ jobs:
             useradd -m builder && \
             chown -R builder:builder /void-packages && \
             
-            su - builder -c 'cd /void-packages && ./xbps-src binary-bootstrap' && \
-            su - builder -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
-            su - builder -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
-            su - builder -c 'cd /void-packages && ./xbps-src pkg neko-icons' && \
-            su - builder -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
-            su - builder -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
-            
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src binary-bootstrap'
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard'
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg kasha-installer'
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-icons'
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-themes'
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds'
+          
             cd /void-packages/hostdir/binpkgs && \
             xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps && \
             xbps-rindex -a *.xbps && \
