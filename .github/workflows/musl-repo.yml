@@ -60,7 +60,8 @@ jobs:
             chmod -R 777 /void-packages/hostdir/binpkgs
           "
           
-          rm -f /tmp/void-packages/privkey.pem
+          # Adding sudo to force removal despite changed ownership
+          sudo rm -f /tmp/void-packages/privkey.pem
           
       - name: Deploy to SourceForge
         env:
