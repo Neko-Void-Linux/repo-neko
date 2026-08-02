@@ -33,10 +33,10 @@ jobs:
           cd /tmp/void-packages
           # 2. Viajamos en el tiempo al commit donde todo estaba bien
           # git checkout e6db056
-          # git clone --depth 1 https://codeberg.org/javiercplus/linux-cachy-void.git srcpkgs/linux-cachy-void
+          git clone --depth 1 https://codeberg.org/javiercplus/linux-cachy-void.git srcpkgs/linux-cachy-void
           # git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-zen.git srcpkgs/linux-neko-zen
           # git clone --depth 1 https://codeberg.org/Neko-Void/zig-nk.git srcpkgs/zig-nk
-          git clone --depth 1 https://github.com/javiercplus/ly-xbps.git srcpkgs/ly
+          # git clone --depth 1 https://github.com/javiercplus/ly-xbps.git srcpkgs/ly
           # git clone --depth 1 https://github.com/javiercplus/falcond-wd.git srcpkgs/falcond-wd
           # git clone --depth 1 https://codeberg.org/javiercplus/Neko-Wizard.git srcpkgs/Neko-Wizard
           # git clone --depth 1 https://github.com/javiercplus/noctalia srcpkgs/noctalia
@@ -62,9 +62,9 @@ jobs:
       - name: Build package
         run: |
           su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-cachy-void"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-cachy-void"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-zen"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
+          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg zig-nk"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg falcond-wd"
