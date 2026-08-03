@@ -31,7 +31,8 @@ jobs:
         run: |
           mkdir -p /tmp/void-packages/hostdir/binpkgs
           cd /tmp/void-packages/hostdir/binpkgs
-          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl .
+          # CORRECCIÓN: Se agregó un '/' al final de 'musl/' para descargar su contenido, no la carpeta
+          sshpass -e rsync -avz -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/ .
 
       - name: Build and Sign packages in Void Musl Container
         env:
@@ -46,12 +47,11 @@ jobs:
             chown -R builder:builder /void-packages && \
             
             chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src binary-bootstrap' && \
-            #chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
-            #chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
-           # chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-icons' && \
-           # chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
-            #chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
-
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-icons' && \
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
             chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg cmuspp-void' && \
             
             cd /void-packages/hostdir/binpkgs && \
@@ -71,4 +71,5 @@ jobs:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
-          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/
+          # CORRECCIÓN: Se usa './' para asegurar que envía el contenido de la carpeta actual hacia 'musl/'
+          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/
