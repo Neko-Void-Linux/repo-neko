@@ -46,11 +46,13 @@ jobs:
             chown -R builder:builder /void-packages && \
             
             chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src binary-bootstrap' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-icons' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
+            #chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
+            #chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
+           # chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-icons' && \
+           # chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
+            #chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
+
+            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg cmuspp-void' && \
             
             cd /void-packages/hostdir/binpkgs && \
             xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps && \
