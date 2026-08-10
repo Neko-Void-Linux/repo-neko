@@ -38,7 +38,7 @@ jobs:
           # git clone --depth 1 https://codeberg.org/Neko-Void/zig-nk.git srcpkgs/zig-nk
           # git clone --depth 1 https://github.com/javiercplus/ly-xbps.git srcpkgs/ly
           # git clone --depth 1 https://github.com/javiercplus/falcond-wd.git srcpkgs/falcond-wd
-          # git clone --depth 1 https://codeberg.org/javiercplus/Neko-Wizard.git srcpkgs/Neko-Wizard
+          git clone --depth 1 https://github.com/Neko-Void-Linux/Neko-Wizard.git srcpkgs/Neko-Wizard
           # git clone --depth 1 https://github.com/javiercplus/noctalia srcpkgs/noctalia
           # git clone --depth 1 https://codeberg.org/Neko-Void/xwinwrap-nk.git srcpkgs/xwinwrap-nk
           # git clone --depth 1 https://codeberg.org/Neko-Void/mullvad-vpn.git srcpkgs/mullvad-vpn
