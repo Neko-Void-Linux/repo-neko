@@ -68,7 +68,7 @@ jobs:
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg zig-nk"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg falcond-wd"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg Neko-Wizard"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg Neko-Wizard"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kasha-installer" 
       - name: Sign packages and index
