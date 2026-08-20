@@ -33,7 +33,9 @@ jobs:
           cd /tmp/void-packages
           # 2. Viajamos en el tiempo al commit donde todo estaba bien
           # git checkout e6db056
-          git clone --depth 1 https://codeberg.org/javiercplus/linux-cachy-void.git srcpkgs/linux-cachy-void
+          git clone https://github.com/Neko-Void-Linux/cnr.git custompkgs
+          cp -rf custompkgs/* srcpkgs/
+          # git clone --depth 1 https://codeberg.org/javiercplus/linux-cachy-void.git srcpkgs/linux-cachy-void
           # git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-zen.git srcpkgs/linux-neko-zen
           # git clone --depth 1 https://codeberg.org/Neko-Void/zig-nk.git srcpkgs/zig-nk
           # git clone --depth 1 https://github.com/javiercplus/ly-xbps.git srcpkgs/ly
@@ -69,7 +71,7 @@ jobs:
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg falcond-wd"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg Neko-Wizard"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
+          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kasha-installer" 
       - name: Sign packages and index
         run: |
