@@ -67,12 +67,13 @@ jobs:
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-cachy-void"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-zen"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kyoz"
+          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kyoz"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg zig-nk"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg falcond-wd"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg Neko-Wizard"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
+          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kasha-installer" 
+          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg brave-bin" 
       - name: Sign packages and index
         run: |
           echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
