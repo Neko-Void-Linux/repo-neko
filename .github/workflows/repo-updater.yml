@@ -63,7 +63,7 @@ jobs:
         
       - name: Build package
         run: |
-          su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
+          # su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-cachy-void"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-zen"
           # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
