@@ -2,6 +2,17 @@ name: Repo Updater
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_only:
+        description: 'Solo sincronizar y firmar (Saltar compilación)'
+        required: true
+        type: boolean
+        default: false
+      packages:
+        description: 'Paquetes a compilar (separados por comas: pkg1, pkg2)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -35,17 +46,6 @@ jobs:
           # git checkout e6db056
           git clone https://github.com/Neko-Void-Linux/cnr.git custompkgs
           cp -rf custompkgs/* srcpkgs/
-          # git clone --depth 1 https://codeberg.org/javiercplus/linux-cachy-void.git srcpkgs/linux-cachy-void
-          # git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-zen.git srcpkgs/linux-neko-zen
-          # git clone --depth 1 https://codeberg.org/Neko-Void/zig-nk.git srcpkgs/zig-nk
-          # git clone --depth 1 https://github.com/javiercplus/ly-xbps.git srcpkgs/ly
-          # git clone --depth 1 https://github.com/javiercplus/falcond-wd.git srcpkgs/falcond-wd
-          # git clone --depth 1 https://github.com/Neko-Void-Linux/Neko-Wizard.git srcpkgs/Neko-Wizard
-          # git clone --depth 1 https://github.com/javiercplus/noctalia srcpkgs/noctalia
-          # git clone --depth 1 https://codeberg.org/Neko-Void/xwinwrap-nk.git srcpkgs/xwinwrap-nk
-          # git clone --depth 1 https://codeberg.org/Neko-Void/mullvad-vpn.git srcpkgs/mullvad-vpn
-          # git clone --depth 1 https://codeberg.org/javiercplus/Kasha-Installer.git srcpkgs/kasha-installer
-          # git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-rt.git srcpkgs/linux-neko-rt
           echo "#nnothing" >> common/build-style/none.sh
           chown -R builder:builder /tmp/void-packages
 
@@ -62,26 +62,35 @@ jobs:
         run: chown -R builder:builder /tmp/void-packages
         
       - name: Build package
+        # Este paso solo se ejecuta si sync_only es falso y hay paquetes definidos
+        if: ${{ !inputs.sync_only && inputs.packages != '' }}
         run: |
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-cachy-void"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-zen"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kyoz"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg zig-nk"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg falcond-wd"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg Neko-Wizard"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kasha-installer" 
-          # su - builder -c "cd /tmp/void-packages && ./xbps-src pkg brave-bin" 
+          su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
+          
+          # Procesar la lista de paquetes separada por comas
+          IFS=',' read -ra PKGS <<< "${{ inputs.packages }}"
+          for pkg in "${PKGS[@]}"; do
+            # Eliminar espacios en blanco accidentales
+            pkg=$(echo "$pkg" | xargs)
+            if [ -n "$pkg" ]; then
+              echo "Compilando paquete: $pkg"
+              su - builder -c "cd /tmp/void-packages && ./xbps-src pkg $pkg"
+            fi
+          done
+
       - name: Sign packages and index
         run: |
           echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
           cd /tmp/void-packages/hostdir/binpkgs
           
-          xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
-          xbps-rindex -a *.xbps
-          xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+          # Verificación para evitar errores si no hay archivos .xbps en la carpeta
+          if ls *.xbps 1> /dev/null 2>&1; then
+            xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+            xbps-rindex -a *.xbps
+            xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+          else
+            echo "No se encontraron paquetes .xbps para firmar."
+          fi
           
           rm /tmp/privkey.pem
 
