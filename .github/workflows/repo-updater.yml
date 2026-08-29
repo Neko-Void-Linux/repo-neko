@@ -62,8 +62,8 @@ jobs:
         run: chown -R builder:builder /tmp/void-packages
         
       - name: Build package
-        # Este paso solo se ejecuta si sync_only es falso y hay paquetes definidos
         if: ${{ !inputs.sync_only && inputs.packages != '' }}
+        shell: bash
         run: |
           su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
           
