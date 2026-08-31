@@ -33,7 +33,7 @@ jobs:
 
       - name: Clone void-packages and templates
         run: |
-          git clone --depth 1 https://codeberg.org/Neko-Void/musl-repo.git /tmp/srcpkgs
+          git clone --depth 1 https://github.com/Neko-Void-Linux/musl-repo.git /tmp/srcpkgs
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           # Copiamos el contenido dentro de la carpeta srcpkgs existente
           cp -rf /tmp/srcpkgs/* /tmp/void-packages/srcpkgs/
