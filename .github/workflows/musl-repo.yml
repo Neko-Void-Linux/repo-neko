@@ -2,19 +2,34 @@ name: Musl Repository Build
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_only:
+        description: 'Solo sincronizar y firmar (Saltar compilación)'
+        required: true
+        type: boolean
+        default: false
+      packages:
+        description: 'Paquetes a compilar (separados por comas: pkg1, pkg2)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
     # Quitamos el 'container:' global para que Actions use el entorno de Ubuntu nativo
+    # y usamos Docker internamente para el entorno musl.
 
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Rsync & SSHpass)
-        run: sudo apt-get update && sudo apt-get install -y sshpass rsync
+      - name: Install dependencies (Rsync, SSHpass & HF CLI)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass rsync python3-pip
+          python3 -m pip install -U "huggingface_hub[cli]" --break-system-packages
 
       - name: Clone void-packages and templates
         run: |
@@ -31,7 +46,7 @@ jobs:
         run: |
           mkdir -p /tmp/void-packages/hostdir/binpkgs
           cd /tmp/void-packages/hostdir/binpkgs
-          # CORRECCIÓN: Se agregó un '/' al final de 'musl/' para descargar su contenido, no la carpeta
+          # Sincronizamos el contenido de musl/
           sshpass -e rsync -avz -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/ .
 
       - name: Build and Sign packages in Void Musl Container
@@ -40,29 +55,58 @@ jobs:
         run: |
           echo "$XBPS_PRIVKEY" > /tmp/void-packages/privkey.pem
           
-          docker run --rm --privileged -v /tmp/void-packages:/void-packages ghcr.io/void-linux/void-musl:latest /bin/sh -c "
-            xbps-install -Syu xbps && xbps-install -Syu && \
-            xbps-install -y base-devel xtools tar gcc make shadow util-linux && \
-            useradd -m builder && \
-            chown -R builder:builder /void-packages && \
-            
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src binary-bootstrap' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg Neko-Wizard' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg kasha-installer' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-icons' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-themes' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg neko-backgrounds' && \
-            chroot --userspec=builder:builder / bash -c 'cd /void-packages && ./xbps-src pkg cmuspp-void' && \
-            
-            cd /void-packages/hostdir/binpkgs && \
-            xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps && \
-            xbps-rindex -a *.xbps && \
-            xbps-rindex --sign --signedby 'javierc' --privkey /void-packages/privkey.pem . && \
-            
+          # Creamos un script que se ejecutará dentro del contenedor de Docker
+          cat << 'EOF' > /tmp/void-packages/build.sh
+          # 1. Instalar dependencias esenciales y bash
+          xbps-install -Syu xbps && xbps-install -Syu
+          xbps-install -y base-devel xtools tar gcc make shadow util-linux bash
+
+          useradd -m builder
+          chown -R builder:builder /void-packages
+
+          # 2. Usar bash para procesar los arrays y la lógica de compilación
+          bash -c '
+            SYNC_ONLY="$1"
+            PACKAGES="$2"
+
+            if [ "$SYNC_ONLY" != "true" ] && [ -n "$PACKAGES" ]; then
+              chroot --userspec=builder:builder / bash -c "cd /void-packages && ./xbps-src binary-bootstrap"
+              
+              # Procesar la lista de paquetes separada por comas
+              IFS="," read -ra PKGS <<< "$PACKAGES"
+              for pkg in "${PKGS[@]}"; do
+                # Eliminar espacios en blanco
+                pkg=$(echo "$pkg" | xargs)
+                if [ -n "$pkg" ]; then
+                  echo "Compilando paquete: $pkg"
+                  chroot --userspec=builder:builder / bash -c "cd /void-packages && ./xbps-src pkg $pkg"
+                fi
+              done
+            else
+              echo "Saltando compilación o no se especificaron paquetes."
+            fi
+
+            # 3. Firmar paquetes
+            cd /void-packages/hostdir/binpkgs
+            if ls *.xbps 1> /dev/null 2>&1; then
+              xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps
+              xbps-rindex -a *.xbps
+              xbps-rindex --sign --signedby "javierc" --privkey /void-packages/privkey.pem .
+            else
+              echo "No se encontraron paquetes .xbps para firmar."
+            fi
+
             chmod -R 777 /void-packages/hostdir/binpkgs
-          "
+          ' _ "${1}" "${2}"
+          EOF
+
+          # Ejecutamos el contenedor mapeando el directorio e invocando el script creado
+          docker run --rm --privileged \
+            -v /tmp/void-packages:/void-packages \
+            ghcr.io/void-linux/void-musl:latest \
+            /bin/sh /void-packages/build.sh "${{ inputs.sync_only }}" "${{ inputs.packages }}"
           
-          # Adding sudo to force removal despite changed ownership
+          # Limpieza
           sudo rm -f /tmp/void-packages/privkey.pem
           
       - name: Deploy to SourceForge
@@ -71,5 +115,15 @@ jobs:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
-          # CORRECCIÓN: Se usa './' para asegurar que envía el contenido de la carpeta actual hacia 'musl/'
+          # Aseguramos enviar a la ruta /repo/musl/
           sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/
+
+      - name: Compress and upload to Hugging Face 
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd /tmp/void-packages/hostdir/binpkgs
+          VERSION=$(date +"%Y%m%d")
+          # Se cambió el nombre del archivo final para identificar que es de musl
+          tar -czvf /tmp/neko-packages-musl.tar.gz .
+          hf upload arepaconcafe/repo /tmp/neko-packages-musl.tar.gz musl-test-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
