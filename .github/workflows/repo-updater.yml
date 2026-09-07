@@ -47,6 +47,7 @@ jobs:
           git clone https://github.com/Neko-Void-Linux/cnr.git custompkgs
           cp -rf custompkgs/* srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh
+          echo "libQt6Pas.so.6 libqt6pas-bin-6.2.10_1" >> common/shlibs
           chown -R builder:builder /tmp/void-packages
 
       - name: Download existing repo from SourceForge
