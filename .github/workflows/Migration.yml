@@ -107,10 +107,11 @@ jobs:
       - name: Deploy to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
           
-          # Activar nullglob: si un tipo de archivo no existe, no genera error
+          # Activar nullglob
           shopt -s nullglob
           
           # Recopilar todos los paquetes, índices y ambos tipos de firmas
@@ -133,7 +134,6 @@ jobs:
             echo "Creando nuevo release stable..."
             gh release create stable --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" "${ARCHIVOS[@]}"
           fi
-
       - name: Compress and upload to Hugging Face 
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
