@@ -18,7 +18,10 @@ on:
         required: true
         type: boolean
         default: false
-
+        
+permissions:
+  contents: write
+  
 jobs:
   build:
     runs-on: ubuntu-22.04
