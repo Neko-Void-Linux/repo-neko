@@ -109,12 +109,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
+          # 1. Agregar excepción de seguridad para Git
+          git config --global --add safe.directory '*'
+          
           cd /tmp/void-packages/hostdir/binpkgs
           
           # Activar nullglob
           shopt -s nullglob
           
-          # Recopilar todos los paquetes, índices y ambos tipos de firmas
+          # Recopilar todos los paquetes, índices y firmas
           ARCHIVOS=()
           for f in *.xbps *.sig *.sig2 *-repodata*; do
             if [ -f "$f" ]; then
@@ -127,13 +130,17 @@ jobs:
             exit 0
           fi
           
-          if gh release view stable >/dev/null 2>&1; then
-            echo "El release existe. Subiendo y sobreescribiendo archivos..."
-            gh release upload stable "${ARCHIVOS[@]}" --clobber
+          # 2. Especificar explícitamente tu repositorio
+          REPO="${{ github.repository }}"
+          
+          if gh release view stable --repo "$REPO" >/dev/null 2>&1; then
+            echo "El release existe. Subiendo y sobreescribiendo archivos en $REPO..."
+            gh release upload stable "${ARCHIVOS[@]}" --clobber --repo "$REPO"
           else
-            echo "Creando nuevo release stable..."
-            gh release create stable --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" "${ARCHIVOS[@]}"
+            echo "Creando nuevo release stable en $REPO..."
+            gh release create stable "${ARCHIVOS[@]}" --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" --repo "$REPO"
           fi
+          
       - name: Compress and upload to Hugging Face 
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
