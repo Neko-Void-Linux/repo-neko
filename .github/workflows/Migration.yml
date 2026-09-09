@@ -20,7 +20,7 @@ on:
         default: false
 
 env:
-  GITLAB_REPO: "tu_usuario/Repo-Updater"
+  GITLAB_REPO: "neko-voidlinux/repo"
 
 jobs:
   build:
