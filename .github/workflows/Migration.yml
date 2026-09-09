@@ -35,13 +35,10 @@ jobs:
         run: |
           xbps-install -Syu --repository=https://repo-de.voidlinux.org/current/ xbps
           xbps-install -Suyd --repository=https://repo-de.voidlinux.org/current/
-          xbps-install -y --repository=https://repo-de.voidlinux.org/current/ wget nodejs ca-certificates ntp git base-devel xtools sudo rsync openssh sshpass python3 python3-pip tar curl jq
+          # Se añadió 'glab' al final de esta lista y se eliminó wget/tar
+          xbps-install -y --repository=https://repo-de.voidlinux.org/current/ wget nodejs ca-certificates ntp git base-devel xtools sudo rsync openssh sshpass python3 python3-pip tar curl jq glab
           
           python3 -m pip install -U "huggingface_hub[cli]" --break-system-packages
-          
-          wget -q https://github.com/gitlabhq/cli/releases/download/v1.49.0/glab_1.49.0_linux_x86_64.tar.gz
-          tar -xzf glab_1.49.0_linux_x86_64.tar.gz bin/glab
-          mv bin/glab /usr/bin/
           
           groupadd -f xbuilder
           useradd -m -s /bin/bash -G xbuilder builder
