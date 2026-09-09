@@ -110,12 +110,28 @@ jobs:
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
           
+          # Activar nullglob: si un tipo de archivo no existe, no genera error
+          shopt -s nullglob
+          
+          # Recopilar todos los paquetes, índices y ambos tipos de firmas
+          ARCHIVOS=()
+          for f in *.xbps *.sig *.sig2 *-repodata*; do
+            if [ -f "$f" ]; then
+              ARCHIVOS+=("$f")
+            fi
+          done
+          
+          if [ ${#ARCHIVOS[@]} -eq 0 ]; then
+            echo "No hay archivos para subir al release."
+            exit 0
+          fi
+          
           if gh release view stable >/dev/null 2>&1; then
             echo "El release existe. Subiendo y sobreescribiendo archivos..."
-            gh release upload stable *.xbps *-repodata *-repodata.sig --clobber
+            gh release upload stable "${ARCHIVOS[@]}" --clobber
           else
             echo "Creando nuevo release stable..."
-            gh release create stable --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" *.xbps *-repodata *-repodata.sig
+            gh release create stable --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" "${ARCHIVOS[@]}"
           fi
 
       - name: Compress and upload to Hugging Face 
