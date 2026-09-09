@@ -14,13 +14,10 @@ on:
         type: string
         default: ''
       migrate_sf:
-        description: 'Migrar TODO desde SourceForge a GitLab'
+        description: 'Migrar TODO desde SourceForge a GitHub'
         required: true
         type: boolean
         default: false
-
-env:
-  GITLAB_REPO: "neko-voidlinux/repo"
 
 jobs:
   build:
@@ -35,8 +32,7 @@ jobs:
         run: |
           xbps-install -Syu --repository=https://repo-de.voidlinux.org/current/ xbps
           xbps-install -Suyd --repository=https://repo-de.voidlinux.org/current/
-          # Se añadió 'glab' al final de esta lista y se eliminó wget/tar
-          xbps-install -y --repository=https://repo-de.voidlinux.org/current/ wget nodejs ca-certificates ntp git base-devel xtools sudo rsync openssh sshpass python3 python3-pip tar curl jq glab
+          xbps-install -y --repository=https://repo-de.voidlinux.org/current/ wget nodejs ca-certificates ntp git base-devel xtools sudo rsync openssh sshpass python3 python3-pip tar curl jq github-cli
           
           python3 -m pip install -U "huggingface_hub[cli]" --break-system-packages
           
@@ -62,16 +58,17 @@ jobs:
         env:
           SFTP_USER: ${{ secrets.SFTP_USERNAME }}
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p /tmp/void-packages/hostdir/binpkgs
           cd /tmp/void-packages/hostdir/binpkgs
           
           if [ "${{ inputs.migrate_sf }}" = "true" ]; then
+            echo "Migrando desde SourceForge..."
             sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/ .
           else
-            glab auth login --token $GITLAB_TOKEN
-            glab release download stable --repo ${{ env.GITLAB_REPO }} --dir . || echo "Release stable vacío o no existe"
+            echo "Descargando estado actual desde GitHub Releases..."
+            gh release download stable --dir . --pattern "*" || echo "El release stable no existe o esta vacio. Se creara en el paso de despliegue."
           fi
 
       - name: Fix permissions for builder
@@ -107,20 +104,19 @@ jobs:
           
           rm /tmp/privkey.pem
 
-      - name: Deploy to GitLab Release
+      - name: Deploy to GitHub Release
         env:
-          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
-          glab auth login --token $GITLAB_TOKEN
           
-          glab release create stable --repo ${{ env.GITLAB_REPO }} --name "Stable Release" || true
-          
-          for file in *.xbps *-repodata *-repodata.sig; do
-            if [ -f "$file" ]; then
-              glab release upload stable "$file" --repo ${{ env.GITLAB_REPO }} || true
-            fi
-          done
+          if gh release view stable >/dev/null 2>&1; then
+            echo "El release existe. Subiendo y sobreescribiendo archivos..."
+            gh release upload stable *.xbps *-repodata *-repodata.sig --clobber
+          else
+            echo "Creando nuevo release stable..."
+            gh release create stable --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" *.xbps *-repodata *-repodata.sig
+          fi
 
       - name: Compress and upload to Hugging Face 
         env:
