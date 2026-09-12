@@ -96,6 +96,7 @@ jobs:
           echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
           cd /tmp/void-packages/hostdir/binpkgs
           rm -f x86_64-repodata
+          rm -f *.sig2
           rm -f *.sig
           xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
           xbps-rindex -a *.xbps
