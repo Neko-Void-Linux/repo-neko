@@ -17,7 +17,7 @@ on:
         description: 'Migrar TODO desde SourceForge a GitHub'
         required: true
         type: boolean
-        default: false
+        default: true
         
 permissions:
   contents: write
