@@ -1,4 +1,4 @@
-name: Repo Updater BETA
+name: (ROLLING)  Repo Updater
 
 on:
   workflow_dispatch:
@@ -14,11 +14,11 @@ on:
         type: string
         default: ''
       migrate_sf:
-        description: 'Migrar TODO desde SourceForge a GitHub'
+        description: 'Descargar estado base desde SourceForge (si es false, usa GitHub Releases)'
         required: true
         type: boolean
         default: true
-        
+
 permissions:
   contents: write
   
@@ -57,7 +57,7 @@ jobs:
           echo "libQt6Pas.so.6 libqt6pas-bin-6.2.10_1" >> common/shlibs
           chown -R builder:builder /tmp/void-packages
 
-      - name: Download existing repo
+      - name: Download existing repo state
         env:
           SFTP_USER: ${{ secrets.SFTP_USERNAME }}
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
@@ -67,11 +67,11 @@ jobs:
           cd /tmp/void-packages/hostdir/binpkgs
           
           if [ "${{ inputs.migrate_sf }}" = "true" ]; then
-            echo "Migrando desde SourceForge..."
-            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/ .
+            echo "Descargando estado base desde SourceForge..."
+            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/ . || echo "Advertencia: Fallo al descargar desde SF, continuando con carpeta vacía."
           else
-            echo "Descargando estado actual desde GitHub Releases..."
-            gh release download stable --dir . --pattern "*" || echo "El release stable no existe o esta vacio. Se creara en el paso de despliegue."
+            echo "Descargando estado base desde GitHub Releases..."
+            gh release download stable --dir . --pattern "*" || echo "Advertencia: El release stable no existe o está vacío. Se creará en el paso de despliegue."
           fi
 
       - name: Fix permissions for builder
@@ -95,11 +95,22 @@ jobs:
         run: |
           echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
           cd /tmp/void-packages/hostdir/binpkgs
+          
+          # Limpieza de firmas antiguas para evitar conflictos
           rm -f x86_64-repodata
           rm -f *.sig2
           rm -f *.sig
-          xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
-          xbps-rindex -a *.xbps
+          
+          # Verificación para evitar errores si no hay archivos .xbps nuevos
+          if ls *.xbps 1> /dev/null 2>&1; then
+            echo "Firmando nuevos paquetes .xbps..."
+            xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+            xbps-rindex -a *.xbps
+          else
+            echo "No se encontraron paquetes .xbps nuevos. Solo se firmará el repodata existente."
+          fi
+          
+          echo "Firmando índice del repositorio..."
           xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
           rm /tmp/privkey.pem
 
@@ -108,15 +119,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          # 1. Agregar excepción de seguridad para Git
           git config --global --add safe.directory '*'
-          
           cd /tmp/void-packages/hostdir/binpkgs
           
-          # Activar nullglob
           shopt -s nullglob
-          
-          # Recopilar todos los paquetes, índices y firmas
           ARCHIVOS=()
           for f in *.xbps *.sig *.sig2 *-repodata*; do
             if [ -f "$f" ]; then
@@ -126,20 +132,27 @@ jobs:
           
           if [ ${#ARCHIVOS[@]} -eq 0 ]; then
             echo "No hay archivos para subir al release."
-            exit 0
-          fi
-          
-          # 2. Especificar explícitamente tu repositorio
-          REPO="${{ github.repository }}"
-          
-          if gh release view stable --repo "$REPO" >/dev/null 2>&1; then
-            echo "El release existe. Subiendo y sobreescribiendo archivos en $REPO..."
-            gh release upload stable "${ARCHIVOS[@]}" --clobber --repo "$REPO"
           else
-            echo "Creando nuevo release stable en $REPO..."
-            gh release create stable "${ARCHIVOS[@]}" --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" --repo "$REPO"
+            REPO="${{ github.repository }}"
+            if gh release view stable --repo "$REPO" >/dev/null 2>&1; then
+              echo "El release existe. Subiendo y sobreescribiendo archivos en GitHub..."
+              gh release upload stable "${ARCHIVOS[@]}" --clobber --repo "$REPO"
+            else
+              echo "Creando nuevo release stable en GitHub..."
+              gh release create stable "${ARCHIVOS[@]}" --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" --repo "$REPO"
+            fi
           fi
-          
+
+      - name: Deploy to SourceForge
+        env:
+          SFTP_USER: ${{ secrets.SFTP_USERNAME }}
+          SSHPASS: ${{ secrets.SFTP_PASSWORD }}
+        run: |
+          cd /tmp/void-packages/hostdir/binpkgs
+          echo "Sincronizando estado final hacia SourceForge..."
+          # La bandera --delete asegura que SourceForge sea un espejo exacto de lo que se acaba de subir a GitHub
+          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/
+
       - name: Compress and upload to Hugging Face 
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
