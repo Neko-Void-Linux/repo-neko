@@ -48,6 +48,10 @@ jobs:
           cd /tmp/void-packages/hostdir/binpkgs
           # Sincronizamos el contenido de musl/
           sshpass -e rsync -avz -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/ .
+          rm -f *repodata
+          rm -f *.sig2
+          rm -f *.sig
+          
 
       - name: Build and Sign packages in Void Musl Container
         env:
@@ -109,6 +113,35 @@ jobs:
           # Limpieza
           sudo rm -f /tmp/void-packages/privkey.pem
           
+      - name: Deploy to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          git config --global --add safe.directory '*'
+          cd /tmp/void-packages/hostdir/binpkgs
+          
+          shopt -s nullglob
+          ARCHIVOS=()
+          for f in *.xbps *.sig *.sig2 *-repodata*; do
+            if [ -f "$f" ]; then
+              ARCHIVOS+=("$f")
+            fi
+          done
+          
+          if [ ${#ARCHIVOS[@]} -eq 0 ]; then
+            echo "No hay archivos para subir al release."
+          else
+            REPO="${{ github.repository }}"
+            if gh release view packages --repo "$REPO" >/dev/null 2>&1; then
+              echo "El release existe. Subiendo y sobreescribiendo archivos en GitHub..."
+              gh release upload packages "${ARCHIVOS[@]}" --clobber --repo "$REPO"
+            else
+              echo "Creando nuevo release packages en GitHub..."
+              gh release create packages "${ARCHIVOS[@]}" --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" --repo "$REPO"
+            fi
+          fi
+          
       - name: Deploy to SourceForge
         env:
           SFTP_USER: ${{ secrets.SFTP_USERNAME }}
@@ -117,13 +150,3 @@ jobs:
           cd /tmp/void-packages/hostdir/binpkgs
           # Aseguramos enviar a la ruta /repo/musl/
           sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/
-
-      - name: Compress and upload to Hugging Face 
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          cd /tmp/void-packages/hostdir/binpkgs
-          VERSION=$(date +"%Y%m%d")
-          # Se cambió el nombre del archivo final para identificar que es de musl
-          tar -czvf /tmp/neko-packages-musl.tar.gz .
-          hf upload arepaconcafe/repo /tmp/neko-packages-musl.tar.gz musl-test-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
