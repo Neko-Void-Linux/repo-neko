@@ -101,14 +101,9 @@ jobs:
           rm -f *.sig2
           rm -f *.sig
           
-          # Verificación para evitar errores si no hay archivos .xbps nuevos
-          if ls *.xbps 1> /dev/null 2>&1; then
-            echo "Firmando nuevos paquetes .xbps..."
-            xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
-            xbps-rindex -a *.xbps
-          else
-            echo "No se encontraron paquetes .xbps nuevos. Solo se firmará el repodata existente."
-          fi
+          echo "Firmando paquetes .xbps..."
+          xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+          xbps-rindex -a *.xbps
           
           echo "Firmando índice del repositorio..."
           xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
