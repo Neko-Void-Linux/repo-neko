@@ -57,7 +57,6 @@ jobs:
           libscenefx-0.5.so scenefx-0.5_1
           libQt6Pas.so.6 qt6pas-6.2.10_1
           libcrypto.so.1.1 libssl1.1-1.1.1w_1
-          libmpv.so.1 mpv-0.41.0_3
           EOF"
           chown -R builder:builder /tmp/void-packages
 
