@@ -24,7 +24,7 @@ permissions:
   
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 360
     container:
       image: 'ghcr.io/void-linux/void-mklive:20250116R1'
