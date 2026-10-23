@@ -50,7 +50,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
-          git clone https://github.com/Neko-Void-Linux/cnr.git custompkgs
+          git clone https://github.com/Neko-Void-Linux/neko-pkgs.git custompkgs
           cp -rf custompkgs/* srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh
           sh -c "cat << EOF >> common/shlibs
