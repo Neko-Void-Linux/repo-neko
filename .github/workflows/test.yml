@@ -1,4 +1,4 @@
-name: TESTEAR PAQUETE
+name: TEST PKG
 
 on:
   workflow_dispatch:
