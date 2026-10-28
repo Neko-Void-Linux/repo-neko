@@ -41,8 +41,8 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
           
-          git clone --depth 1 ${{ github.event.inputs.repo_url }} srcpkgs/${{ github.event.inputs.package_name }}
-
+          git clone --depth 1 ${{ github.event.inputs.repo_url }} 
+          cp -rf neko-pkgs/* /tmp/void-packages/srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh
           chown -R builder:builder /tmp/void-packages
 
