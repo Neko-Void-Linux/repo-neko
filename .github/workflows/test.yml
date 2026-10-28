@@ -1,7 +1,16 @@
-name: Build Test
+name: TESTEAR PAQUETE
 
 on:
   workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'Nombre del paquete a construir'
+        required: true
+        default: 'mullvad-vpn'
+      repo_url:
+        description: 'URL del repositorio del paquete'
+        required: true
+        default: 'https://github.com/Neko-Void-Linux/neko-pkgs.git'
 
 jobs:
   build:
@@ -32,7 +41,7 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
           
-          git clone --depth 1 https://codeberg.org/Neko-Void/mullvad-vpn.git srcpkgs/mullvad-vpn
+          git clone --depth 1 ${{ github.event.inputs.repo_url }} srcpkgs/${{ github.event.inputs.package_name }}
 
           echo "#nnothing" >> common/build-style/none.sh
           chown -R builder:builder /tmp/void-packages
@@ -40,8 +49,7 @@ jobs:
       - name: Build package
         run: |
           su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg mullvad-vpn"
-          
+          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ${{ github.event.inputs.package_name }}"
 
       - name: Sign packages and index
         run: |
@@ -62,4 +70,5 @@ jobs:
           VERSION=$(date +"%Y%m%d")
           tar -czvf /tmp/neko-packages.tar.gz .
           
-          hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz test-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
+          # Cambié el nombre del archivo de subida para que incluya el nombre del paquete en lugar de solo "test"
+          hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz ${{ github.event.inputs.package_name }}-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
