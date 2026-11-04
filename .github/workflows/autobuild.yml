@@ -104,7 +104,7 @@ jobs:
   build:
     name: Compilar y publicar (glibc)
     needs: check
-    if: needs.check.outputs.pkgs != '' || inputs.sync_only == 'true'
+    if: needs.check.outputs.pkgs != '' || inputs.sync_only == true || inputs.sync_only == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     container:
@@ -257,7 +257,7 @@ jobs:
 
       - name: Compilar y publicar incrementalmente (Resiliente)
         id: build
-        if: inputs.sync_only != 'true'
+        if: inputs.sync_only != true && inputs.sync_only != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNED_BY: ${{ secrets.SIGNED_BY || 'javierc <SrDicov@gmail.com>' }}
