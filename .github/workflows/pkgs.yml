@@ -7,63 +7,71 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     container:
       image: 'ghcr.io/void-linux/void-mklive:20250116R1'
       options: --privileged
 
     steps:
-      # 1. Configurar entorno, instalar herramientas y crear usuario de compilación
+      # 1. Clonar el código fuente
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # 2. Configurar entorno, instalar herramientas y crear usuario de compilación
       - name: Fix SSL and install tools
         run: |
           # Actualizar repositorios y el sistema
-          xbps-install -Syu --repository=https://repo-de.voidlinux.org/current/  xbps
+          xbps-install -Syu --repository=https://repo-de.voidlinux.org/current/ xbps
           xbps-install -Syu --repository=https://repo-de.voidlinux.org/current/
-          xbps-install -Suyd --repository=https://repo-de.voidlinux.org/current/ 
+          xbps-install -Suyd --repository=https://repo-de.voidlinux.org/current/
           
           # Instalar los paquetes necesarios (incluyendo sudo)
           xbps-install -y --repository=https://repo-de.voidlinux.org/current/ wget nodejs ca-certificates ntp git base-devel xtools sudo rsync openssh sshpass
 
-          # Crear el grupo xbuilder y un usuario 'builder' asociado a él
-          wget -O /tmp/neko https://github.com/javiercplus/repo-neko/raw/refs/heads/main/repo-init.sh
-          chmod +x /tmp/neko
-          /tmp/neko user 
-      # 2. Clonar el código fuente
-      - name: Checkout source code
-        uses: actions/checkout@v4
+          chmod +x ./repo-init.sh
+          ./repo-init.sh user
 
       # 3. Clonar void-packages, copiar los templates y ajustar permisos
       - name: Copy template
         run: |
-          /tmp/neko clone
+          ./repo-init.sh clone
 
       # 4. Construir los paquetes secuencialmente como el usuario builder
       - name: Build package
         run: |
-          /tmp/neko build
+          ./repo-init.sh build
 
       # Firmar paquetes e índice del repositorio
       - name: Sign packages and index
         run: |
-          echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
           cd /tmp/void-packages/hostdir/binpkgs
-          
-          # Firmar cada paquete individualmente primero
-          xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
-          
-          # Generar el índice del repositorio (crea el archivo repodata)
-          xbps-rindex -a *.xbps
-          
-          # Firmar el índice recién construido
-          xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
-          
-          # Limpiar la clave privada
-          rm /tmp/privkey.pem
+          if ls *.xbps 1> /dev/null 2>&1; then
+            if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+              echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+              xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+              xbps-rindex -a *.xbps
+              xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+              rm -f /tmp/privkey.pem
+            else
+              echo "Sin clave privada, generando índice repodata sin firmar..."
+              xbps-rindex -a *.xbps
+            fi
+          else
+            echo "No se encontraron paquetes .xbps para firmar."
+            exit 1
+          fi
+
       # 6. Subir repositorio a SourceForge
       - name: Deploy to SourceForge
         env:
           SFTP_USER: ${{ secrets.SFTP_USERNAME }}
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
-
           cd /tmp/void-packages/hostdir/binpkgs
-          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/
+          if [ -z "$SFTP_USER" ] || [ -z "$SSHPASS" ]; then
+            echo "Credenciales SFTP no configuradas. Saltando despliegue a SourceForge."
+          else
+            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/
+          fi

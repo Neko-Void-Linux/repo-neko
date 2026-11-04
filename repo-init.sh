@@ -10,109 +10,67 @@ user(){
 }
 
 clone(){
-git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
-cd /tmp/void-packages
-echo XBPS_ALLOW_RESTRICTED=yes >> etc/conf
-git clone --depth 1 https://codeberg.org/Neko-Void/protonup-qtvoid.git
-cp -rfv protonup-qtvoid/* srcpkgs/
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/spicetify-void.git
-cp -rfv spicetify-void/* srcpkgs/
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/STEAM-ALT-VOID.git
-cp -rfv STEAM-ALT-VOID/* srcpkgs/
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/faugus-launcher-void.git
-cp -rfv faugus-launcher-void/* srcpkgs/
+    echo "Clonando void-packages..."
+    git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
+    cd /tmp/void-packages
+    echo "XBPS_ALLOW_RESTRICTED=yes" >> etc/conf
 
-git clone --depth 1 https://codeberg.org/Neko-Void/portproton-void.git
-cp -rfv portproton-void/* srcpkgs/
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/Windscribe-void.git
-cp -rfv Windscribe-void/* srcpkgs/
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/ZerotierOne-Void-Linux.git
-cp -rfv ZerotierOne-Void-Linux/* srcpkgs/
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/heroic-games.git srcpkgs/heroic-games
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/brave-bin.git srcpkgs/brave-bin
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-rolling.git srcpkgs/linux-neko-rolling
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-rt.git srcpkgs/linux-neko-rt
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/linux-neko-zen.git srcpkgs/linux-neko-zen
+    echo "Clonando repositorio oficial de plantillas neko-pkgs..."
+    git clone --depth 1 https://github.com/Neko-Void-Linux/neko-pkgs.git /tmp/neko-pkgs
+    cp -rf /tmp/neko-pkgs/* srcpkgs/
+    rm -rf /tmp/neko-pkgs
 
-git clone --depth 1 https://codeberg.org/Neko-Void/zig-nk.git srcpkgs/zig-nk
+    echo "#nnothing" >> common/build-style/none.sh
+    cat << 'EOF' >> common/shlibs
+libscenefx-0.5.so scenefx-latest-0.5_1
+libQt6Pas.so.6 libqt6pas-bin-6.2.10_1
+libcrypto.so.1.1 libssl1.1-1.1.1w_1
+EOF
 
-git clone --depth 1 https://github.com/javiercplus/falcond-wd.git srcpkgs/falcond-wd
-
-git clone --depth 1 https://codeberg.org/javiercplus/linux-cachy-void.git srcpkgs/linux-cachy-void
-
-git clone --depth 1 https://github.com/javiercplus/ly-xbps.git srcpkgs/ly
-
-git clone --depth 1 https://codeberg.org/Neko-Void/waterfox.git srcpkgs/waterfox
-          
-git clone --depth 1 https://codeberg.org/Neko-Void/vesktop.git srcpkgs/vesktop
-
-git clone --depth 1 https://gitlab.com/neko-voidlinux/kitty-free.git srcpkgs/kitty-free
-
-git clone --depth 1 https://codeberg.org/javiercplus/kyoz.git srcpkgs/kyoz
-
-git clone --depth 1 https://github.com/javiercplus/sfwbar.git srcpkgs/sfwbar
-
-git clone --depth 1 https://github.com/javiercplus/noctalia.git srcpkgs/noctalia
-
-git clone --depth 1 https://codeberg.org/javiercplus/Kasha-Installer.git srcpkgs/kasha-installer
-
-git clone --depth 1 https://codeberg.org/Neko-Void/xwinwrap-nk.git srcpkgs/xwinwrap-nk
-git clone --depth 1 https://codeberg.org/Neko-Void/mullvad-vpn.git srcpkgs/mullvad-vpn
-#BUILDSTyLE NONE
-echo "#nnothing" >> common/build-style/none.sh
-# Cambiar la propiedad al usuario builder
-chown -R builder:builder /tmp/void-packages
+    # Cambiar la propiedad al usuario builder
+    chown -R builder:builder /tmp/void-packages
 }
 
 build(){
-          su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src  pkg heroic-games"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg protonup-qt"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg steam-nk"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg spicetify"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg faugus-launcher"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg portproton"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg windscribe-desktop"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg zerotierone"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg brave-bin"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-rolling"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-rt"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-neko-zen"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg waterfox"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg vesktop"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kyoz"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg sfwbar"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg noctalia"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kitty-free"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg kasha-installer"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg linux-cachy-void"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg zig-nk"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg ly"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg falcond-wd"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg xwinwrap-nk"
-          su - builder -c "cd /tmp/void-packages && ./xbps-src pkg mullvad-vpn"
+    su - builder -c "cd /tmp/void-packages && ./xbps-src binary-bootstrap"
+    if [ $# -gt 0 ]; then
+        for pkg in "$@"; do
+            echo "Compilando paquete: $pkg"
+            su - builder -c "cd /tmp/void-packages && ./xbps-src pkg $pkg"
+        done
+    else
+        DEFAULT_PKGS=(
+            heroic-games protonup-qt steam-nk spicetify faugus-launcher
+            portproton windscribe-desktop zerotierone brave-bin
+            linux-neko-rolling linux-neko-rt linux-neko-zen waterfox
+            vesktop kyoz sfwbar noctalia kitty-free kasha-installer
+            linux-cachy-void zig-nk ly falcond-wd xwinwrap-nk mullvad-vpn
+        )
+        for pkg in "${DEFAULT_PKGS[@]}"; do
+            echo "Compilando paquete: $pkg"
+            su - builder -c "cd /tmp/void-packages && ./xbps-src pkg $pkg"
+        done
+    fi
 }
 
-case "$@" in 
-       user|user)
-       echo "config user"
-       user
-       ;;
-       build|build)
-       echo "building pkgs"
-       build
-       ;;
-       clone|clone)
-       clone
-       ;;
+ACTION="$1"
+shift 2>/dev/null || true
+
+case "$ACTION" in 
+    user)
+        echo "Configurando usuario builder..."
+        user
+        ;;
+    build)
+        echo "Iniciando compilación de paquetes..."
+        build "$@"
+        ;;
+    clone)
+        echo "Clonando y preparando entorno..."
+        clone
+        ;;
+    *)
+        echo "Uso: $0 {user|clone|build [paquetes...]}"
+        exit 1
+        ;;
 esac

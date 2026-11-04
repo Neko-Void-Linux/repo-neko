@@ -16,6 +16,9 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     container:
       image: 'ghcr.io/void-linux/void-mklive:20250116R1'
       options: --privileged
@@ -41,9 +44,16 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
           
-          git clone --depth 1 ${{ github.event.inputs.repo_url }} 
-          cp -rf neko-pkgs/* /tmp/void-packages/srcpkgs/
+          REPO_URL="${{ github.event.inputs.repo_url }}"
+          REPO_URL="${REPO_URL:-https://github.com/Neko-Void-Linux/neko-pkgs.git}"
+          git clone --depth 1 "$REPO_URL" /tmp/custompkgs
+          cp -rf /tmp/custompkgs/* /tmp/void-packages/srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh
+          cat << 'EOF' >> common/shlibs
+          libscenefx-0.5.so scenefx-latest-0.5_1
+          libQt6Pas.so.6 libqt6pas-bin-6.2.10_1
+          libcrypto.so.1.1 libssl1.1-1.1.1w_1
+          EOF
           chown -R builder:builder /tmp/void-packages
 
       - name: Build package
@@ -53,22 +63,32 @@ jobs:
 
       - name: Sign packages and index
         run: |
-          echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
           cd /tmp/void-packages/hostdir/binpkgs
-          
-          xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
-          xbps-rindex -a *.xbps
-          xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
-          
-          rm /tmp/privkey.pem
+          if ls *.xbps 1> /dev/null 2>&1; then
+            if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+              echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+              xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+              xbps-rindex -a *.xbps
+              xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+              rm -f /tmp/privkey.pem
+            else
+              echo "Sin clave privada XBPS_PRIVATE_KEY, generando índice repodata sin firmar..."
+              xbps-rindex -a *.xbps
+            fi
+          else
+            echo "No se encontraron paquetes .xbps generados."
+            exit 1
+          fi
     
       - name: Compress and upload to Hugging Face
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          cd /tmp/void-packages/hostdir/binpkgs
-          VERSION=$(date +"%Y%m%d")
-          tar -czvf /tmp/neko-packages.tar.gz .
-          
-          # Cambié el nombre del archivo de subida para que incluya el nombre del paquete en lugar de solo "test"
-          hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz ${{ github.event.inputs.package_name }}-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN no configurado. Saltando subida a Hugging Face."
+          else
+            cd /tmp/void-packages/hostdir/binpkgs
+            VERSION=$(date +"%Y%m%d")
+            tar -czvf /tmp/neko-packages.tar.gz .
+            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz ${{ github.event.inputs.package_name }}-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
+          fi
