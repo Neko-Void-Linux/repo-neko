@@ -43,7 +43,9 @@ jobs:
 
       - name: Clone void-packages and templates
         run: |
-          git clone --depth 1 "${{ inputs.repo_url || 'https://github.com/Neko-Void-Linux/neko-pkgs.git' }}" /tmp/srcpkgs
+          REPO_URL="${{ inputs.repo_url }}"
+          REPO_URL="${REPO_URL:-https://github.com/Neko-Void-Linux/neko-pkgs.git}"
+          git clone --depth 1 "$REPO_URL" /tmp/srcpkgs
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           # Copiamos el contenido dentro de la carpeta srcpkgs existente
           cp -rf /tmp/srcpkgs/* /tmp/void-packages/srcpkgs/

@@ -41,7 +41,9 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
           
-          git clone --depth 1 "${{ github.event.inputs.repo_url }}" /tmp/custompkgs
+          REPO_URL="${{ github.event.inputs.repo_url }}"
+          REPO_URL="${REPO_URL:-https://github.com/Neko-Void-Linux/neko-pkgs.git}"
+          git clone --depth 1 "$REPO_URL" /tmp/custompkgs
           cp -rf /tmp/custompkgs/* /tmp/void-packages/srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh
           cat << 'EOF' >> common/shlibs
