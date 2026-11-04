@@ -327,15 +327,24 @@ jobs:
             cd void-packages/hostdir/binpkgs
             upload_list=()
 
-            for f in "${NEW_FILES[@]}"; do
-              bname=$(basename "$f")
-              upload_list+=( "$bname" )
-              pname=$(echo "$bname" | sed -r 's/(-[^-]+_[0-9]+(\.[^.]+)?\.xbps)$//')
-
-              # Poda de versiones viejas si prune está activo
-              if [ "${{ inputs.prune }}" != "false" ]; then
-                for old_f in "$pname"-*.xbps; do
+            # Poda de versiones viejas si prune está activo
+            if [ "${{ inputs.prune }}" != "false" ]; then
+              for f in "${NEW_FILES[@]}"; do
+                bname=$(basename "$f")
+                pname=$(echo "$bname" | sed -r 's/(-[^-]+_[0-9]+(\.[^.]+)?\.xbps)$//')
+                for old_f in "$pname"-[0-9]*.xbps; do
                   [ -f "$old_f" ] || continue
+                  # Proteger todos los binarios generados en esta ejecución
+                  skip=false
+                  for nf in "${NEW_FILES[@]}"; do
+                    if [ "$(basename "$nf")" = "$old_f" ]; then
+                      skip=true
+                      break
+                    fi
+                  done
+                  if [ "$skip" = "true" ]; then
+                    continue
+                  fi
                   if [ "$old_f" != "$bname" ]; then
                     echo "🗑️ Podando versión obsoleta: $old_f"
                     rm -f "$old_f" "$old_f.sig2" "$old_f.sig"
@@ -343,7 +352,13 @@ jobs:
                     gh release delete-asset "$REPO_TAG" "$old_f.sig2" --yes --repo "$GH_REPO" 2>/dev/null || true
                   fi
                 done
-              fi
+              done
+            fi
+
+            for f in "${NEW_FILES[@]}"; do
+              bname=$(basename "$f")
+              [ -f "$bname" ] || continue
+              upload_list+=( "$bname" )
 
               # Firmar paquete binario si hay clave privada
               if [ -f /tmp/privkey.pem ]; then
@@ -368,8 +383,15 @@ jobs:
             done
 
             echo "🚀 Subiendo $pkg y repodata actualizado a GitHub Releases..."
-            gh release upload "$REPO_TAG" "${upload_list[@]}" --clobber --repo "$GH_REPO"
-            echo "✅ $pkg publicado y disponible inmediatamente en el release."
+            for attempt in 1 2 3; do
+              if gh release upload "$REPO_TAG" "${upload_list[@]}" --clobber --repo "$GH_REPO"; then
+                echo "✅ $pkg publicado y disponible inmediatamente en el release."
+                break
+              else
+                echo "WARN: Intento $attempt falló al subir assets de $pkg a GitHub Releases, reintentando..."
+                sleep 3
+              fi
+            done
             cd ../../..
           done
 
