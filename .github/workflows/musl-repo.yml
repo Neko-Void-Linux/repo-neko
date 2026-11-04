@@ -13,6 +13,16 @@ on:
         required: false
         type: string
         default: ''
+      repo_url:
+        description: 'URL del repositorio de plantillas'
+        required: false
+        type: string
+        default: 'https://github.com/Neko-Void-Linux/neko-pkgs.git'
+      migrate_sf:
+        description: 'Descargar estado base desde SourceForge (si es false, usa GitHub Releases)'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -33,23 +43,32 @@ jobs:
 
       - name: Clone void-packages and templates
         run: |
-          git clone --depth 1 https://github.com/Neko-Void-Linux/musl-repo.git /tmp/srcpkgs
+          git clone --depth 1 "${{ inputs.repo_url || 'https://github.com/Neko-Void-Linux/neko-pkgs.git' }}" /tmp/srcpkgs
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           # Copiamos el contenido dentro de la carpeta srcpkgs existente
           cp -rf /tmp/srcpkgs/* /tmp/void-packages/srcpkgs/
           echo "#nnothing" >> /tmp/void-packages/common/build-style/none.sh
-          echo "libscenefx-0.5.so scenefx-latest-0.5_1" >> /tmp/void-packages/common/shlibs
-          echo "libQt6Pas.so.6 libqt6pas-bin-6.2.10_1" >> /tmp/void-packages/common/shlibs
+          cat << 'EOF' >> /tmp/void-packages/common/shlibs
+          libscenefx-0.5.so scenefx-latest-0.5_1
+          libQt6Pas.so.6 libqt6pas-bin-6.2.10_1
+          libcrypto.so.1.1 libssl1.1-1.1.1w_1
+          EOF
 
-      - name: Download existing repo from SourceForge
+      - name: Download existing repo
         env:
           SFTP_USER: ${{ secrets.SFTP_USERNAME }}
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p /tmp/void-packages/hostdir/binpkgs
           cd /tmp/void-packages/hostdir/binpkgs
-          # Sincronizamos el contenido de musl/
-          sshpass -e rsync -avz -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/ .
+          if [ "${{ inputs.migrate_sf }}" = "true" ] && [ -n "$SFTP_USER" ] && [ -n "$SSHPASS" ]; then
+            echo "Descargando estado base desde SourceForge..."
+            sshpass -e rsync -avz -e "ssh -o StrictHostKeyChecking=no" ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/ . || echo "Advertencia: Fallo al descargar desde SF."
+          else
+            echo "Descargando estado base desde GitHub Releases (packages)..."
+            gh release download packages --dir . --pattern "*" || echo "Advertencia: El release packages no existe o está vacío. Se creará en el paso de despliegue."
+          fi
           rm -f *repodata
           rm -f *.sig2
           rm -f *.sig
@@ -95,11 +114,17 @@ jobs:
             # 3. Firmar paquetes
             cd /void-packages/hostdir/binpkgs
             if ls *.xbps 1> /dev/null 2>&1; then
-              xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps
-              xbps-rindex -a *.xbps
-              xbps-rindex --sign --signedby "javierc" --privkey /void-packages/privkey.pem .
+              if [ -s /void-packages/privkey.pem ]; then
+                echo "Firmando paquetes con clave privada..."
+                xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps
+                xbps-rindex -a *.xbps
+                xbps-rindex --sign --signedby "javierc" --privkey /void-packages/privkey.pem .
+              else
+                echo "Clave privada no provista, generando repodata sin firmar..."
+                xbps-rindex -a *.xbps
+              fi
             else
-              echo "No se encontraron paquetes .xbps para firmar."
+              echo "No se encontraron paquetes .xbps para procesar."
             fi
 
             chmod -R 777 /void-packages/hostdir/binpkgs
@@ -150,5 +175,9 @@ jobs:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
-          # Aseguramos enviar a la ruta /repo/musl/
-          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/
+          if [ -z "$SFTP_USER" ] || [ -z "$SSHPASS" ]; then
+            echo "Credenciales SFTP no configuradas. Saltando despliegue hacia SourceForge (musl)."
+          else
+            echo "Sincronizando hacia SourceForge /repo/musl/..."
+            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/musl/
+          fi

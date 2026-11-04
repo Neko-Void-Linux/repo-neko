@@ -54,8 +54,8 @@ jobs:
           cp -rf custompkgs/* srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh
           sh -c "cat << EOF >> common/shlibs
-          libscenefx-0.5.so scenefx-0.5_1
-          libQt6Pas.so.6 qt6pas-6.2.10_1
+          libscenefx-0.5.so scenefx-latest-0.5_1
+          libQt6Pas.so.6 libqt6pas-bin-6.2.10_1
           libcrypto.so.1.1 libssl1.1-1.1.1w_1
           EOF"
           chown -R builder:builder /tmp/void-packages
@@ -104,13 +104,19 @@ jobs:
           rm -f *.sig2
           rm -f *.sig
           
-          echo "Firmando paquetes .xbps..."
-          xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
-          xbps-rindex -a *.xbps
-          
-          echo "Firmando índice del repositorio..."
-          xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
-          rm /tmp/privkey.pem
+          shopt -s nullglob
+          XBPS_FILES=(*.xbps)
+          if [ ${#XBPS_FILES[@]} -gt 0 ]; then
+            echo "Firmando paquetes .xbps..."
+            xbps-rindex --sign-pkg --privkey /tmp/privkey.pem "${XBPS_FILES[@]}"
+            xbps-rindex -a "${XBPS_FILES[@]}"
+            
+            echo "Firmando índice del repositorio..."
+            xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+          else
+            echo "No se encontraron paquetes .xbps para firmar."
+          fi
+          rm -f /tmp/privkey.pem
 
       - name: Deploy to GitHub Release
         env:
@@ -147,15 +153,23 @@ jobs:
           SSHPASS: ${{ secrets.SFTP_PASSWORD }}
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
-          echo "Sincronizando estado final hacia SourceForge..."
-          # La bandera --delete asegura que SourceForge sea un espejo exacto de lo que se acaba de subir a GitHub
-          sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/
+          if [ -z "$SFTP_USER" ] || [ -z "$SSHPASS" ]; then
+            echo "Credenciales SFTP no configuradas (secrets SFTP_USERNAME / SFTP_PASSWORD vacíos). Saltando sincronización con SourceForge."
+          else
+            echo "Sincronizando estado final hacia SourceForge..."
+            # La bandera --delete asegura que SourceForge sea un espejo exacto de lo que se acaba de subir a GitHub
+            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/
+          fi
 
       - name: Compress and upload to Hugging Face 
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          cd /tmp/void-packages/hostdir/binpkgs
-          VERSION=$(date +"%Y%m%d")
-          tar -czvf /tmp/neko-packages.tar.gz .
-          hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz test-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN no configurado. Saltando subida a Hugging Face."
+          else
+            cd /tmp/void-packages/hostdir/binpkgs
+            VERSION=$(date +"%Y%m%d")
+            tar -czvf /tmp/neko-packages.tar.gz .
+            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz test-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
+          fi
