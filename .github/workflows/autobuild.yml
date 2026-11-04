@@ -1,0 +1,478 @@
+name: Neko Repo Autobuild (glibc)
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Paquetes específicos a compilar (separados por coma o espacio; vacío = auto-detectar desactualizados)'
+        required: false
+        type: string
+        default: ''
+      repo_url:
+        description: 'URL del repositorio de plantillas neko-pkgs'
+        required: false
+        type: string
+        default: 'https://github.com/Neko-Void-Linux/neko-pkgs.git'
+      branch:
+        description: 'Rama de neko-pkgs'
+        required: false
+        type: string
+        default: 'main'
+      force:
+        description: 'Forzar reconstrucción de todos los paquetes aunque ya existan en el release'
+        required: false
+        type: boolean
+        default: false
+      sync_only:
+        description: 'Solo sincronizar, firmar repodata y publicar sin compilar'
+        required: false
+        type: boolean
+        default: false
+      migrate_sf:
+        description: 'Descargar estado inicial desde SourceForge en vez de GitHub Releases'
+        required: false
+        type: boolean
+        default: false
+      prune:
+        description: 'Eliminar versiones obsoletas del release al publicar las nuevas'
+        required: false
+        type: boolean
+        default: true
+  repository_dispatch:
+    types: [neko-pkgs-update]
+
+env:
+  ARCH: x86_64
+  REPO_TAG: stable
+  GH_REPO: ${{ github.repository }}
+
+concurrency:
+  group: repo-neko-autobuild
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Detectar paquetes desactualizados
+    runs-on: ubuntu-latest
+    outputs:
+      pkgs: ${{ steps.detect.outputs.pkgs }}
+    steps:
+      - name: Checkout scripts de detección
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Consultar assets del release (sin descargar)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release view "$REPO_TAG" --repo "$GH_REPO" --json assets \
+            --jq '.assets[].name' > assets.txt 2>/dev/null || : > assets.txt
+          echo "Total de assets publicados actualmente:"
+          wc -l assets.txt
+
+      - name: Clonar repositorio de plantillas neko-pkgs
+        run: |
+          TPL_REPO="${{ inputs.repo_url || 'https://github.com/Neko-Void-Linux/neko-pkgs.git' }}"
+          TPL_BRANCH="${{ inputs.branch || 'main' }}"
+          git clone --depth 1 "$TPL_REPO" -b "$TPL_BRANCH" neko-pkgs
+
+      - name: Analizar y determinar cola de compilación
+        id: detect
+        run: |
+          set -e
+          if [ "${{ inputs.sync_only }}" = "true" ]; then
+            pkgs=""
+          elif [ -n "${{ inputs.packages }}" ]; then
+            pkgs=$(echo "${{ inputs.packages }}" | tr ',' ' ')
+          else
+            force_flag=""
+            [ "${{ inputs.force }}" = "true" ] && force_flag="--force"
+            out=$(python3 .github/scripts/check_outdated.py neko-pkgs assets.txt --arch="$ARCH" $force_flag)
+            echo "$out"
+            pkgs=$(echo "$out" | sed -n 's/^pkgs://p')
+          fi
+          echo "pkgs=$pkgs" >> "$GITHUB_OUTPUT"
+          [ -n "$pkgs" ] || echo "Todos los binarios están al día. El build se omitirá."
+
+  build:
+    name: Compilar y publicar (glibc)
+    needs: check
+    if: needs.check.outputs.pkgs != '' || inputs.sync_only == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    container:
+      image: ghcr.io/void-linux/void-glibc-full
+      options: --privileged
+      volumes:
+        - /dev:/dev
+      env:
+        ARCH: x86_64
+        BOOTSTRAP: x86_64
+    steps:
+      - name: Checkout repo-neko
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Preparar contenedor base
+        run: |
+          set -e
+          mkdir -p /etc/xbps.d && cp /usr/share/xbps.d/*-repository-*.conf /etc/xbps.d/ 2>/dev/null || true
+          sed -i 's|repo-default|repo-ci|g' /etc/xbps.d/*-repository-*.conf 2>/dev/null || true
+          xbps-install -Syu xbps 2>&1 | tail -n 3 || true
+          xbps-install -y sudo bash curl git perl tar xz github-cli python3 python3-pip ccache xbps-triggers bsdtar openssh openssl rsync sshpass jq 2>&1 | tail -n 3
+          python3 -m pip install -U "huggingface_hub[cli]" --break-system-packages 2>/dev/null || true
+
+          groupadd -f xbuilder
+          id builder &>/dev/null || useradd -m -s /bin/bash -G xbuilder builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          git config --global --add safe.directory '*'
+          git config --system --add safe.directory '*'
+
+      - name: Permitir userns no privilegiados
+        run: |
+          echo 0 | tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo "no apparmor file"
+          sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
+          sysctl -w kernel.unprivileged_userns_clone=1 2>/dev/null || true
+
+      - name: Restaurar caché de compilación y distfiles
+        uses: actions/cache@v4
+        with:
+          path: |
+            void-packages/hostdir/sources
+            void-packages/hostdir/ccache
+          key: neko-glibc-xbps-v1
+          restore-keys: neko-glibc-xbps-
+
+      - name: Clonar void-packages e integrar neko-pkgs
+        run: |
+          set -e
+          rm -rf void-packages neko-pkgs
+          git clone --depth 1 https://github.com/void-linux/void-packages.git void-packages
+          
+          TPL_REPO="${{ inputs.repo_url || 'https://github.com/Neko-Void-Linux/neko-pkgs.git' }}"
+          TPL_BRANCH="${{ inputs.branch || 'main' }}"
+          git clone --depth 1 "$TPL_REPO" -b "$TPL_BRANCH" neko-pkgs
+
+          # Integrar plantillas de neko-pkgs dentro de srcpkgs
+          for d in neko-pkgs/*; do
+            [ -d "$d" ] || continue
+            pkg=$(basename "$d")
+            [ "$pkg" = ".git" ] || [ "$pkg" = ".github" ] && continue
+            cp -rf "$d" void-packages/srcpkgs/
+          done
+
+          # Preservar symlinks de subpaquetes (chatgpt, scenefx-latest-devel, etc.)
+          for l in neko-pkgs/*; do
+            [ -L "$l" ] || continue
+            cp -P "$l" void-packages/srcpkgs/
+          done
+
+          # Shlibs y definiciones auxiliares del ecosistema Neko
+          echo "#nothing" >> void-packages/common/build-style/none.sh
+          cat << 'EOF' >> void-packages/common/shlibs
+          libscenefx-0.5.so scenefx-latest-0.5_1
+          libQt6Pas.so.6 libqt6pas-bin-6.2.10_1
+          libcrypto.so.1.1 libssl1.1-1.1.1w_1
+          EOF
+
+          mkdir -p void-packages/hostdir/binpkgs \
+                   void-packages/hostdir/sources \
+                   void-packages/hostdir/ccache \
+                   void-packages/logs
+
+          # Configuración de compilación optimizada
+          printf "%s\n" \
+            "XBPS_PRESERVE_PKGS=yes" \
+            "XBPS_CCACHE=yes" \
+            "XBPS_ALLOW_RESTRICTED=yes" \
+            "XBPS_MAKEJOBS=$(nproc)" >> void-packages/etc/conf
+
+          chown -R builder:builder void-packages
+
+      - name: Asegurar release y sembrar binarios existentes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # Crear el release stable si aún no existe
+          if ! gh release view "$REPO_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Creando release $REPO_TAG en GitHub..."
+            gh release create "$REPO_TAG" --title "Stable Release" --notes "Repositorio oficial de paquetes para Neko Void" --repo "$GH_REPO"
+          fi
+
+          cd void-packages/hostdir/binpkgs
+          if [ "${{ inputs.migrate_sf }}" = "true" ] && [ -n "${{ secrets.SFTP_USERNAME }}" ] && [ -n "${{ secrets.SFTP_PASSWORD }}" ]; then
+            echo "Descargando estado base desde SourceForge..."
+            export SSHPASS="${{ secrets.SFTP_PASSWORD }}"
+            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ${{ secrets.SFTP_USERNAME }}@frs.sourceforge.net:/home/frs/project/neko-void/repo/ . || echo "Aviso: Fallo al descargar de SF, continuando..."
+          else
+            echo "Descargando binarios existentes desde GitHub Releases..."
+            gh release download "$REPO_TAG" --pattern '*.xbps*' --repo "$GH_REPO" 2>/dev/null || true
+            gh release download "$REPO_TAG" --pattern '*-repodata*' --repo "$GH_REPO" 2>/dev/null || true
+          fi
+
+          # Indexar binarios locales para resolución de dependencias por xbps-src
+          if ls *.xbps 1>/dev/null 2>&1; then
+            chown -R builder:builder .
+            sudo -u builder xbps-rindex -a ./*.xbps >/dev/null 2>&1 || true
+          fi
+
+      - name: Bootstrap x86_64
+        run: |
+          for attempt in 1 2 3; do
+            if sudo -Eu builder bash -c 'set -o pipefail; cd void-packages && ./xbps-src binary-bootstrap 2>&1 | tail -n 20'; then
+              exit 0
+            fi
+            echo "Intento de bootstrap $attempt falló; reintentando en 15s..."
+            sleep 15
+          done
+          exit 1
+
+      - name: Hacer visibles librerías y cabeceras sembradas al build
+        continue-on-error: true
+        run: |
+          for f in void-packages/hostdir/binpkgs/*-devel*.xbps \
+                   void-packages/hostdir/binpkgs/lib*.xbps \
+                   void-packages/hostdir/binpkgs/scenefx*.xbps; do
+            [ -f "$f" ] || continue
+            sudo bsdtar -xpf "$f" -C / 2>/dev/null || true
+            sudo -Eu builder bsdtar -xpf "$f" -C void-packages/masterdir-x86_64 2>/dev/null || true
+          done
+          sudo ldconfig 2>/dev/null || true
+
+      - name: Compilar y publicar incrementalmente (Resiliente)
+        id: build
+        if: inputs.sync_only != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNED_BY: ${{ secrets.SIGNED_BY || 'javierc <SrDicov@gmail.com>' }}
+        shell: bash
+        run: |
+          set +e
+          PKGS="${{ needs.check.outputs.pkgs }}"
+          echo "Cola de paquetes a compilar: $PKGS"
+          failed=""
+          built_any=false
+
+          if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+            echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+            chmod 600 /tmp/privkey.pem
+          fi
+
+          for pkg in $PKGS; do
+            if [ -L "void-packages/srcpkgs/$pkg" ]; then
+              echo "=== Omitiendo $pkg (enlace simbólico, se compila con el padre) ==="
+              continue
+            fi
+            if [ ! -d "void-packages/srcpkgs/$pkg" ]; then
+              echo "FAIL $pkg (plantilla no encontrada en srcpkgs)"
+              failed="$failed $pkg"
+              continue
+            fi
+
+            echo "=========================================================="
+            echo "🔨 [$(date +'%T')] Compilando: $pkg"
+            echo "=========================================================="
+            marker="/tmp/.build-start-$pkg"
+            touch "$marker"
+
+            if ! sudo -Eu builder bash -c "set -o pipefail; cd void-packages && ./xbps-src pkg $pkg" \
+                 > "void-packages/logs/$pkg.log" 2>&1; then
+              # Verificar fallo conocido de autodeps en teardown cuando el paquete sí se generó
+              new_xbps=$(find void-packages/hostdir/binpkgs -maxdepth 1 -name "$pkg-*.xbps" -newer "$marker" 2>/dev/null | head -n 1 || true)
+              if [ -n "$new_xbps" ] && grep -q 'ERROR: Transaction failed' "void-packages/logs/$pkg.log"; then
+                echo "WARN $pkg: Solo falló la limpieza de dependencias de construcción; el binario se generó correctamente."
+              else
+                echo "❌ FAIL $pkg"
+                grep -nE "ERROR|error:|FAIL|not found|No such file|undefined reference|cannot|mismatch" \
+                  "void-packages/logs/$pkg.log" | head -40 || true
+                echo "--- Últimas 20 líneas del log ---"
+                tail -n 20 "void-packages/logs/$pkg.log" || true
+                failed="$failed $pkg"
+                continue
+              fi
+            fi
+
+            # Capturar todos los .xbps nuevos producidos (incluye subpaquetes)
+            shopt -s nullglob
+            mapfile -t NEW_FILES < <(find void-packages/hostdir/binpkgs -maxdepth 1 -name "*.xbps" -newer "$marker")
+            shopt -u nullglob
+
+            if [ ${#NEW_FILES[@]} -eq 0 ]; then
+              echo "WARN $pkg: Compilación finalizada pero no se hallaron binarios nuevos."
+              continue
+            fi
+
+            echo "📦 Binarios generados: ${NEW_FILES[*]}"
+            built_any=true
+
+            # ==========================================================
+            # Publicación inmediata conforme se empaqueta
+            # ==========================================================
+            cd void-packages/hostdir/binpkgs
+            upload_list=()
+
+            for f in "${NEW_FILES[@]}"; do
+              bname=$(basename "$f")
+              upload_list+=( "$bname" )
+              pname=$(echo "$bname" | sed -r 's/(-[^-]+_[0-9]+(\.[^.]+)?\.xbps)$//')
+
+              # Poda de versiones viejas si prune está activo
+              if [ "${{ inputs.prune }}" != "false" ]; then
+                for old_f in "$pname"-*.xbps; do
+                  [ -f "$old_f" ] || continue
+                  if [ "$old_f" != "$bname" ]; then
+                    echo "🗑️ Podando versión obsoleta: $old_f"
+                    rm -f "$old_f" "$old_f.sig2" "$old_f.sig"
+                    gh release delete-asset "$REPO_TAG" "$old_f" --yes --repo "$GH_REPO" 2>/dev/null || true
+                    gh release delete-asset "$REPO_TAG" "$old_f.sig2" --yes --repo "$GH_REPO" 2>/dev/null || true
+                  fi
+                done
+              fi
+
+              # Firmar paquete binario si hay clave privada
+              if [ -f /tmp/privkey.pem ]; then
+                echo "Firmando $bname..."
+                rm -f "$bname.sig2"
+                xbps-rindex --sign-pkg --privkey /tmp/privkey.pem "$bname"
+                [ -f "$bname.sig2" ] && upload_list+=( "$bname.sig2" )
+              fi
+
+              # Registrar en el índice repodata
+              xbps-rindex -a "$bname"
+            done
+
+            # Firmar índice repodata
+            if [ -f /tmp/privkey.pem ]; then
+              rm -f x86_64-repodata.sig2
+              xbps-rindex --sign --signedby "$SIGNED_BY" --privkey /tmp/privkey.pem .
+            fi
+
+            for rfile in *-repodata*; do
+              [ -f "$rfile" ] && upload_list+=( "$rfile" )
+            done
+
+            echo "🚀 Subiendo $pkg y repodata actualizado a GitHub Releases..."
+            gh release upload "$REPO_TAG" "${upload_list[@]}" --clobber --repo "$GH_REPO"
+            echo "✅ $pkg publicado y disponible inmediatamente en el release."
+            cd ../../..
+          done
+
+          [ -z "$failed" ] || echo "failed=$failed" >> "$GITHUB_OUTPUT"
+          echo "built_any=$built_any" >> "$GITHUB_OUTPUT"
+
+      - name: Sincronización final y espejos (SourceForge / Hugging Face / Clave Pública)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNED_BY: ${{ secrets.SIGNED_BY || 'javierc <SrDicov@gmail.com>' }}
+          SFTP_USER: ${{ secrets.SFTP_USERNAME }}
+          SSHPASS: ${{ secrets.SFTP_PASSWORD }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          cd void-packages/hostdir/binpkgs 2>/dev/null || exit 0
+
+          # En modo sync_only, re-indexar y re-firmar todo desde cero
+          if [ "${{ inputs.sync_only }}" = "true" ]; then
+            echo "sync_only activo: regenerando repodata completo..."
+            rm -f *-repodata* *.sig2
+            if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+              echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+              chmod 600 /tmp/privkey.pem
+              xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps 2>/dev/null || true
+              xbps-rindex -a *.xbps 2>/dev/null || true
+              xbps-rindex --sign --signedby "$SIGNED_BY" --privkey /tmp/privkey.pem . 2>/dev/null || true
+            else
+              xbps-rindex -a *.xbps 2>/dev/null || true
+            fi
+            shopt -s nullglob
+            files=( *.xbps* *-repodata* )
+            [ ${#files[@]} -gt 0 ] && gh release upload "$REPO_TAG" "${files[@]}" --clobber --repo "$GH_REPO" || true
+          fi
+
+          # Exportar clave pública en formato .plist para pre-importación xbps
+          if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+            echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+            chmod 600 /tmp/privkey.pem
+            openssl pkey -in /tmp/privkey.pem -pubout -out /tmp/pub.pem 2>/dev/null || true
+            if [ -f /tmp/pub.pem ]; then
+              kh=$(ssh-keygen -i -m PKCS8 -f /tmp/pub.pem | ssh-keygen -lf - -E md5 2>/dev/null || true)
+              fp=$(echo "$kh" | awk '{print $2}' | sed 's/^MD5://')
+              if [ -n "$fp" ]; then
+                cat << 'PLISTEOF' > "/tmp/${fp}.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+          <key>public-key</key>
+          <data>
+          PLISTEOF
+                sed -e '1d' -e '$d' /tmp/pub.pem >> "/tmp/${fp}.plist"
+                cat << 'PLISTEOF' >> "/tmp/${fp}.plist"
+          </data>
+          </dict>
+          </plist>
+          PLISTEOF
+                gh release upload "$REPO_TAG" "/tmp/${fp}.plist" /tmp/pub.pem --clobber --repo "$GH_REPO" 2>/dev/null || true
+              fi
+            fi
+            rm -f /tmp/privkey.pem
+          fi
+
+          # Sincronización hacia SourceForge si los secretos están configurados
+          if [ -n "$SFTP_USER" ] && [ -n "$SSHPASS" ]; then
+            echo "Sincronizando estado final hacia SourceForge..."
+            export SSHPASS
+            sshpass -e rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" . ${SFTP_USER}@frs.sourceforge.net:/home/frs/project/neko-void/repo/ || echo "Advertencia: Fallo al sincronizar hacia SourceForge"
+          else
+            echo "Secretos SFTP no configurados. Saltando sincronización con SourceForge."
+          fi
+
+          # Sincronización hacia Hugging Face si el token está configurado
+          if [ -n "$HF_TOKEN" ]; then
+            echo "Comprimiendo y subiendo dataset a Hugging Face..."
+            VERSION=$(date +"%Y%m%d")
+            tar -czf /tmp/neko-packages.tar.gz . 2>/dev/null || true
+            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz "test-$VERSION.tar.gz" --repo-type dataset --token "$HF_TOKEN" || echo "Advertencia: Fallo al sincronizar hacia Hugging Face"
+          else
+            echo "HF_TOKEN no configurado. Saltando sincronización con Hugging Face."
+          fi
+
+      - name: Subir artefacto con logs de compilación
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-glibc
+          path: void-packages/logs/
+          if-no-files-found: ignore
+
+      - name: Guardar caché de xbps (siempre)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            void-packages/hostdir/sources
+            void-packages/hostdir/ccache
+          key: neko-glibc-xbps-v1-${{ github.run_id }}
+
+      - name: Control de Calidad Final
+        if: always()
+        run: |
+          failed="${{ steps.build.outputs.failed }}"
+          if [ -n "$failed" ]; then
+            echo "::error::Los siguientes paquetes fallaron en la compilación:$failed"
+            echo "Nota: Todos los demás paquetes que compilaron con éxito ya fueron publicados y están en el release."
+            exit 1
+          else
+            echo "✅ Todos los paquetes procesados finalizaron con éxito."
+          fi
