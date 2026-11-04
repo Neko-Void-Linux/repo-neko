@@ -16,6 +16,9 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     container:
       image: 'ghcr.io/void-linux/void-mklive:20250116R1'
       options: --privileged
@@ -61,22 +64,20 @@ jobs:
       - name: Sign packages and index
         run: |
           cd /tmp/void-packages/hostdir/binpkgs
-          shopt -s nullglob
-          XBPS_FILES=(*.xbps)
-          if [ ${#XBPS_FILES[@]} -eq 0 ]; then
+          if ls *.xbps 1> /dev/null 2>&1; then
+            if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+              echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+              xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+              xbps-rindex -a *.xbps
+              xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+              rm -f /tmp/privkey.pem
+            else
+              echo "Sin clave privada XBPS_PRIVATE_KEY, generando índice repodata sin firmar..."
+              xbps-rindex -a *.xbps
+            fi
+          else
             echo "No se encontraron paquetes .xbps generados."
             exit 1
-          fi
-
-          if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
-            echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
-            xbps-rindex --sign-pkg --privkey /tmp/privkey.pem "${XBPS_FILES[@]}"
-            xbps-rindex -a "${XBPS_FILES[@]}"
-            xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
-            rm -f /tmp/privkey.pem
-          else
-            echo "Sin clave privada XBPS_PRIVATE_KEY, generando índice repodata sin firmar..."
-            xbps-rindex -a "${XBPS_FILES[@]}"
           fi
     
       - name: Compress and upload to Hugging Face

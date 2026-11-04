@@ -26,6 +26,9 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     container:
       image: 'ghcr.io/void-linux/void-mklive:20250116R1'
       options: --privileged
@@ -104,19 +107,23 @@ jobs:
           rm -f *.sig2
           rm -f *.sig
           
-          shopt -s nullglob
-          XBPS_FILES=(*.xbps)
-          if [ ${#XBPS_FILES[@]} -gt 0 ]; then
-            echo "Firmando paquetes .xbps..."
-            xbps-rindex --sign-pkg --privkey /tmp/privkey.pem "${XBPS_FILES[@]}"
-            xbps-rindex -a "${XBPS_FILES[@]}"
-            
-            echo "Firmando índice del repositorio..."
-            xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+          if ls *.xbps 1> /dev/null 2>&1; then
+            if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+              echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+              echo "Firmando paquetes .xbps..."
+              xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps
+              xbps-rindex -a *.xbps
+              
+              echo "Firmando índice del repositorio..."
+              xbps-rindex --sign --signedby "javierc" --privkey /tmp/privkey.pem .
+              rm -f /tmp/privkey.pem
+            else
+              echo "Sin clave privada XBPS_PRIVATE_KEY, generando índice repodata sin firmar..."
+              xbps-rindex -a *.xbps
+            fi
           else
             echo "No se encontraron paquetes .xbps para firmar."
           fi
-          rm -f /tmp/privkey.pem
 
       - name: Deploy to GitHub Release
         env:
