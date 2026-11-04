@@ -107,6 +107,9 @@ jobs:
     if: needs.check.outputs.pkgs != '' || inputs.sync_only == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
     container:
       image: ghcr.io/void-linux/void-glibc-full
       options: --privileged
@@ -131,7 +134,8 @@ jobs:
           python3 -m pip install -U "huggingface_hub[cli]" --break-system-packages 2>/dev/null || true
 
           groupadd -f xbuilder
-          id builder &>/dev/null || useradd -m -s /bin/bash -G xbuilder builder
+          groupadd -f builder
+          id builder &>/dev/null || useradd -m -s /bin/bash -g builder -G xbuilder builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           git config --global --add safe.directory '*'
           git config --system --add safe.directory '*'
@@ -165,7 +169,9 @@ jobs:
           for d in neko-pkgs/*; do
             [ -d "$d" ] || continue
             pkg=$(basename "$d")
-            [ "$pkg" = ".git" ] || [ "$pkg" = ".github" ] && continue
+            if [ "$pkg" = ".git" ] || [ "$pkg" = ".github" ]; then
+              continue
+            fi
             cp -rf "$d" void-packages/srcpkgs/
           done
 
