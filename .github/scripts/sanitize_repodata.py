@@ -90,6 +90,16 @@ def write_repodata_members(repodata_path: pathlib.Path, members: Dict[str, bytes
         raise last_err
 
 
+def load_plist_safe(raw_bytes: bytes) -> dict:
+    if not raw_bytes or not raw_bytes.strip():
+        return {}
+    try:
+        data = plistlib.loads(raw_bytes)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def sanitize_pkg_entry(pkgname: str, entry: dict) -> bool:
     if pkgname in SYSTEM_CORE_PACKAGES:
         return False
@@ -124,8 +134,8 @@ def process_repodata(binpkgs_dir: pathlib.Path, arch: str, mode: str) -> bool:
         print(f"[{mode.upper()}] Archivo index.plist no encontrado dentro de {repodata_file.name}.")
         return False
 
-    index_data = plistlib.loads(members["index.plist"])
-    stage_data = plistlib.loads(members["stage.plist"]) if "stage.plist" in members else {}
+    index_data = load_plist_safe(members["index.plist"])
+    stage_data = load_plist_safe(members.get("stage.plist", b""))
 
     modified = False
     promoted_count = 0
@@ -189,9 +199,9 @@ def verify_repodata(binpkgs_dir: pathlib.Path, arch: str) -> bool:
 
     members = read_repodata_members(repodata_file)
 
-    # 1. Verificar ausencia de stage.plist
+    # 1. Verificar ausencia de paquetes atrapados en stage.plist
     if "stage.plist" in members:
-        stage_data = plistlib.loads(members["stage.plist"])
+        stage_data = load_plist_safe(members["stage.plist"])
         if stage_data:
             print(f"[CONTROL DE CALIDAD] ❌ ERROR CRÍTICO: stage.plist contiene {len(stage_data)} paquetes no publicados en index.plist:")
             for pkg, entry in stage_data.items():
@@ -203,7 +213,7 @@ def verify_repodata(binpkgs_dir: pathlib.Path, arch: str) -> bool:
         print("[CONTROL DE CALIDAD] ❌ ERROR: index.plist no está presente en el repodata.")
         return False
 
-    index_data = plistlib.loads(members["index.plist"])
+    index_data = load_plist_safe(members["index.plist"])
     print(f"[CONTROL DE CALIDAD] Total de paquetes registrados en index.plist: {len(index_data)}")
 
     # 3. Mapear binarios locales en el directorio
