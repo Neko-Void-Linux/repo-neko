@@ -199,5 +199,5 @@ jobs:
             cd /tmp/void-packages/hostdir/binpkgs
             VERSION=$(date +"%Y%m%d")
             tar -czvf /tmp/neko-packages.tar.gz .
-            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz test-$VERSION.tar.gz --repo-type dataset --token $HF_TOKEN
+            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz test-$VERSION.tar.gz --repo-type dataset
           fi
