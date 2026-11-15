@@ -227,9 +227,11 @@ jobs:
           fi
 
           # Indexar binarios locales para resolución de dependencias por xbps-src
+          python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" --pre --dir . --arch "$ARCH" || true
           if ls *.xbps 1>/dev/null 2>&1; then
             chown -R builder:builder .
             sudo -u builder xbps-rindex -a ./*.xbps >/dev/null 2>&1 || true
+            python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" --post --dir . --arch "$ARCH" || true
           fi
 
       - name: Bootstrap x86_64
@@ -374,9 +376,12 @@ jobs:
               xbps-rindex -a "$bname"
             done
 
+            # Saneamiento Post-Index: Si xbps-rindex -a desvió paquetes a stage.plist, promoverlos a index.plist
+            python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" --post --dir . --arch "$ARCH" || true
+
             # Firmar índice repodata
             if [ -f /tmp/privkey.pem ]; then
-              rm -f x86_64-repodata.sig2
+              rm -f *-repodata*.sig2
               xbps-rindex --sign --signedby "$SIGNED_BY" --privkey /tmp/privkey.pem .
             fi
 
@@ -396,6 +401,25 @@ jobs:
             done
             cd ../../..
           done
+
+          # Si no se compilaron paquetes nuevos pero el repodata fue reparado en la fase pre-index
+          if [ -f /tmp/.repodata-repaired ] && [ "$built_any" != "true" ]; then
+            echo "El repodata fue reparado desde stage.plist sin compilar paquetes nuevos. Firmando y publicando..."
+            cd void-packages/hostdir/binpkgs
+            if [ -f /tmp/privkey.pem ]; then
+              rm -f *-repodata*.sig2
+              xbps-rindex --sign --signedby "$SIGNED_BY" --privkey /tmp/privkey.pem .
+            fi
+            upload_repaired=()
+            for rfile in *-repodata*; do
+              [ -f "$rfile" ] && upload_repaired+=( "$rfile" )
+            done
+            if [ ${#upload_repaired[@]} -gt 0 ]; then
+              echo "Subiendo repodata reparado a GitHub Releases..."
+              gh release upload "$REPO_TAG" "${upload_repaired[@]}" --clobber --repo "$GH_REPO" || true
+            fi
+            cd ../../..
+          fi
 
           [ -z "$failed" ] || echo "failed=$failed" >> "$GITHUB_OUTPUT"
           echo "built_any=$built_any" >> "$GITHUB_OUTPUT"
@@ -422,9 +446,11 @@ jobs:
               chmod 600 /tmp/privkey.pem
               xbps-rindex --sign-pkg --privkey /tmp/privkey.pem *.xbps 2>/dev/null || true
               xbps-rindex -a *.xbps 2>/dev/null || true
+              python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" --post --dir . --arch "$ARCH" || true
               xbps-rindex --sign --signedby "$SIGNED_BY" --privkey /tmp/privkey.pem . 2>/dev/null || true
             else
               xbps-rindex -a *.xbps 2>/dev/null || true
+              python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" --post --dir . --arch "$ARCH" || true
             fi
             shopt -s nullglob
             files=( *.xbps* *-repodata* )
@@ -474,7 +500,7 @@ jobs:
             echo "Comprimiendo y subiendo dataset a Hugging Face..."
             VERSION=$(date +"%Y%m%d")
             tar -czf /tmp/neko-packages.tar.gz . 2>/dev/null || true
-            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz "test-$VERSION.tar.gz" --repo-type dataset --token "$HF_TOKEN" || echo "Advertencia: Fallo al sincronizar hacia Hugging Face"
+            hf upload arepaconcafe/repo /tmp/neko-packages.tar.gz "test-$VERSION.tar.gz" --repo-type dataset || echo "Advertencia: Fallo al sincronizar hacia Hugging Face"
           else
             echo "HF_TOKEN no configurado. Saltando sincronización con Hugging Face."
           fi
@@ -505,6 +531,10 @@ jobs:
             echo "::error::Los siguientes paquetes fallaron en la compilación:$failed"
             echo "Nota: Todos los demás paquetes que compilaron con éxito ya fueron publicados y están en el release."
             exit 1
-          else
-            echo "✅ Todos los paquetes procesados finalizaron con éxito."
           fi
+
+          echo "Ejecutando verificación estricta de repodata e index.plist..."
+          python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" \
+            --verify \
+            --dir void-packages/hostdir/binpkgs \
+            --arch "$ARCH"

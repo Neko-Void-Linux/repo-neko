@@ -49,6 +49,8 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           # Copiamos el contenido dentro de la carpeta srcpkgs existente
           cp -rf /tmp/srcpkgs/* /tmp/void-packages/srcpkgs/
+          mkdir -p /tmp/void-packages/.github/scripts
+          cp -rf .github/scripts/* /tmp/void-packages/.github/scripts/
           echo "#nnothing" >> /tmp/void-packages/common/build-style/none.sh
           cat << 'EOF' >> /tmp/void-packages/common/shlibs
           libscenefx-0.5.so scenefx-latest-0.5_1
@@ -120,10 +122,12 @@ jobs:
                 echo "Firmando paquetes con clave privada..."
                 xbps-rindex --sign-pkg --privkey /void-packages/privkey.pem *.xbps
                 xbps-rindex -a *.xbps
+                python3 /void-packages/.github/scripts/sanitize_repodata.py --post --dir . --arch x86_64-musl || true
                 xbps-rindex --sign --signedby "javierc" --privkey /void-packages/privkey.pem .
               else
                 echo "Clave privada no provista, generando repodata sin firmar..."
                 xbps-rindex -a *.xbps
+                python3 /void-packages/.github/scripts/sanitize_repodata.py --post --dir . --arch x86_64-musl || true
               fi
             else
               echo "No se encontraron paquetes .xbps para procesar."
