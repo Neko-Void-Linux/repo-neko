@@ -59,7 +59,7 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
           REPO_URL="${{ inputs.repo_url }}"
-          REPO_URL="${REPO_URL:-https://github.com/Neko-Void-Linux/neko-pkgs.git}"
+          REPO_URL="${REPO_URL:-https://github.com/${{ github.repository_owner }}/neko-pkgs.git}"
           echo "Clonando plantillas desde: $REPO_URL"
           git clone "$REPO_URL" custompkgs
           cp -rf custompkgs/* srcpkgs/

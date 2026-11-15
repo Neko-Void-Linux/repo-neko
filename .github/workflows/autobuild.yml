@@ -1,6 +1,8 @@
 name: Neko Repo Autobuild (glibc)
 
 on:
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       packages:
@@ -79,7 +81,7 @@ jobs:
 
       - name: Clonar repositorio de plantillas neko-pkgs
         run: |
-          TPL_REPO="${{ inputs.repo_url || 'https://github.com/Neko-Void-Linux/neko-pkgs.git' }}"
+          TPL_REPO="${{ inputs.repo_url || format('https://github.com/{0}/neko-pkgs.git', github.repository_owner) }}"
           TPL_BRANCH="${{ inputs.branch || 'main' }}"
           git clone --depth 1 "$TPL_REPO" -b "$TPL_BRANCH" neko-pkgs
 
@@ -159,7 +161,7 @@ jobs:
           rm -rf void-packages neko-pkgs
           git clone --depth 1 https://github.com/void-linux/void-packages.git void-packages
           
-          TPL_REPO="${{ inputs.repo_url || 'https://github.com/Neko-Void-Linux/neko-pkgs.git' }}"
+          TPL_REPO="${{ inputs.repo_url || format('https://github.com/{0}/neko-pkgs.git', github.repository_owner) }}"
           TPL_BRANCH="${{ inputs.branch || 'main' }}"
           git clone --depth 1 "$TPL_REPO" -b "$TPL_BRANCH" neko-pkgs
 
