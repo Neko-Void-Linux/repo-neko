@@ -45,7 +45,7 @@ jobs:
           cd /tmp/void-packages
           
           REPO_URL="${{ github.event.inputs.repo_url }}"
-          REPO_URL="${REPO_URL:-https://github.com/Neko-Void-Linux/neko-pkgs.git}"
+          REPO_URL="${REPO_URL:-https://github.com/${{ github.repository_owner }}/neko-pkgs.git}"
           git clone --depth 1 "$REPO_URL" /tmp/custompkgs
           cp -rf /tmp/custompkgs/* /tmp/void-packages/srcpkgs/
           echo "#nnothing" >> common/build-style/none.sh

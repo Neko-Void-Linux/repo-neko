@@ -35,7 +35,7 @@ jobs:
           git clone --depth 1 https://github.com/void-linux/void-packages.git /tmp/void-packages
           cd /tmp/void-packages
           
-          git clone --depth 1 https://github.com/Neko-Void-Linux/neko-pkgs.git /tmp/neko-pkgs
+          git clone --depth 1 "https://github.com/${{ github.repository_owner }}/neko-pkgs.git" /tmp/neko-pkgs
           cp -rf /tmp/neko-pkgs/* srcpkgs/
           rm -rf /tmp/neko-pkgs
 
