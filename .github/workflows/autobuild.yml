@@ -11,10 +11,10 @@ on:
         type: string
         default: ''
       repo_url:
-        description: 'URL del repositorio de plantillas neko-pkgs'
+        description: 'URL del repositorio de plantillas neko-pkgs (vacío = https://github.com/<owner>/neko-pkgs.git)'
         required: false
         type: string
-        default: 'https://github.com/Neko-Void-Linux/neko-pkgs.git'
+        default: ''
       branch:
         description: 'Rama de neko-pkgs'
         required: false
