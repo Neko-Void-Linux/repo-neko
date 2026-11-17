@@ -172,12 +172,15 @@ jobs:
             if [ "$pkg" = ".git" ] || [ "$pkg" = ".github" ]; then
               continue
             fi
+            rm -rf "void-packages/srcpkgs/$pkg"
             cp -rf "$d" void-packages/srcpkgs/
           done
 
           # Preservar symlinks de subpaquetes (chatgpt, scenefx-latest-devel, etc.)
           for l in neko-pkgs/*; do
             [ -L "$l" ] || continue
+            pkg=$(basename "$l")
+            rm -rf "void-packages/srcpkgs/$pkg"
             cp -P "$l" void-packages/srcpkgs/
           done
 
