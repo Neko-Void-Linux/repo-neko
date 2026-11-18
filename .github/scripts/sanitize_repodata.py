@@ -70,6 +70,9 @@ def read_repodata_members(repodata_path: pathlib.Path) -> Dict[str, bytes]:
 
 
 def write_repodata_members(repodata_path: pathlib.Path, members: Dict[str, bytes]) -> None:
+    if "index-meta.plist" not in members:
+        members["index-meta.plist"] = plistlib.dumps({"type": 0})
+
     # Intenta zstd primero; si el entorno no soporta zstd en tarfile, usa gzip (totalmente compatible con xbps)
     write_modes = ["w:zst", "w:gz"]
     last_err: Optional[Exception] = None
@@ -161,12 +164,15 @@ def process_repodata(binpkgs_dir: pathlib.Path, arch: str, mode: str) -> bool:
     if purged_pkgs:
         print(f"[{mode.upper()}] Shlibs del sistema purgadas en {len(purged_pkgs)} paquetes: {', '.join(purged_pkgs)}")
 
+    if "index-meta.plist" not in members:
+        modified = True
+
     if modified or "stage.plist" in members:
+        meta_bytes = members.get("index-meta.plist") or plistlib.dumps({"type": 0})
         new_members = {
             "index.plist": plistlib.dumps(index_data),
+            "index-meta.plist": meta_bytes,
         }
-        if "index-meta.plist" in members:
-            new_members["index-meta.plist"] = members["index-meta.plist"]
 
         write_repodata_members(repodata_file, new_members)
         print(f"[{mode.upper()}] ✅ Repodata saneado con éxito: {len(index_data)} paquetes en index.plist, 0 en stage.plist.")
