@@ -53,8 +53,8 @@ jobs:
           cp -rf .github/scripts/* /tmp/void-packages/.github/scripts/
           echo "#nnothing" >> /tmp/void-packages/common/build-style/none.sh
           cat << 'EOF' >> /tmp/void-packages/common/shlibs
-          libscenefx-0.5.so scenefx-latest-0.5_1
-          libQt6Pas.so.6 libqt6pas-bin-6.2.10_1
+          libscenefx-0.5.so scenefx-nk-0.5_1
+          libQt6Pas.so.6 libqt6pas-6.2.10_1
           libcrypto.so.1.1 libssl1.1-1.1.1w_1
           EOF
 
