@@ -186,12 +186,11 @@ jobs:
 
           # Shlibs y definiciones auxiliares del ecosistema Neko
           echo "#nothing" >> void-packages/common/build-style/none.sh
-          cat << 'EOF' | sed 's/^[[:space:]]*//' >> void-packages/common/shlibs
-          libscenefx-0.5.so scenefx-nk-0.5_1
-          libQt6Pas.so.6 libqt6pas-6.2.10_1
-          libcrypto.so.1.1 libssl1.1-1.1.1w_1
-          liblsfg-vk-layer.so lsfg-vk-2026.2.0.0_1
-          EOF
+          printf '%s\n' \
+            'libscenefx-0.5.so scenefx-nk-0.5_1' \
+            'libQt6Pas.so.6 libqt6pas-6.2.10_1' \
+            'libcrypto.so.1.1 libssl1.1-1.1.1w_1' \
+            'liblsfg-vk-layer.so lsfg-vk-2026.2.0.0_1' >> void-packages/common/shlibs
 
           mkdir -p void-packages/hostdir/binpkgs \
                    void-packages/hostdir/sources \
@@ -211,6 +210,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNED_BY: ${{ secrets.SIGNED_BY || 'javierc <SrDicov@gmail.com>' }}
         run: |
           set -e
           # Crear el release stable si aún no existe
@@ -245,24 +245,22 @@ jobs:
               kh=$(ssh-keygen -i -m PKCS8 -f /tmp/pub.pem | ssh-keygen -lf - -E md5 2>/dev/null || true)
               fp=$(echo "$kh" | awk '{print $2}' | sed 's/^MD5://')
               if [ -n "$fp" ]; then
-                cat << 'PLISTEOF' | sed 's/^[[:space:]]*//' > "/var/db/xbps/keys/${fp}.plist"
-                <?xml version="1.0" encoding="UTF-8"?>
-                <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-                <plist version="1.0">
-                <dict>
-                <key>public-key</key>
-                <data>
-                PLISTEOF
+                printf '%s\n' \
+                  '<?xml version="1.0" encoding="UTF-8"?>' \
+                  '<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+                  '<plist version="1.0">' \
+                  '<dict>' \
+                  '<key>public-key</key>' \
+                  '<data>' > "/var/db/xbps/keys/${fp}.plist"
                 sed -e '1d' -e '$d' /tmp/pub.pem >> "/var/db/xbps/keys/${fp}.plist"
-                cat << 'PLISTEOF' | sed 's/^[[:space:]]*//' >> "/var/db/xbps/keys/${fp}.plist"
-                </data>
-                <key>public-key-size</key>
-                <integer>4096</integer>
-                <key>signature-by</key>
-                <string>${{ secrets.SIGNED_BY || 'javierc <SrDicov@gmail.com>' }}</string>
-                </dict>
-                </plist>
-                PLISTEOF
+                printf '%s\n' \
+                  '</data>' \
+                  '<key>public-key-size</key>' \
+                  '<integer>4096</integer>' \
+                  '<key>signature-by</key>' \
+                  "<string>${SIGNED_BY}</string>" \
+                  '</dict>' \
+                  '</plist>' >> "/var/db/xbps/keys/${fp}.plist"
                 chmod 644 "/var/db/xbps/keys/${fp}.plist"
                 echo "Clave pública ${fp}.plist instalada en /var/db/xbps/keys"
               fi
@@ -523,20 +521,22 @@ jobs:
               kh=$(ssh-keygen -i -m PKCS8 -f /tmp/pub.pem | ssh-keygen -lf - -E md5 2>/dev/null || true)
               fp=$(echo "$kh" | awk '{print $2}' | sed 's/^MD5://')
               if [ -n "$fp" ]; then
-                cat << 'PLISTEOF' | sed 's/^[[:space:]]*//' > "/tmp/${fp}.plist"
-                <?xml version="1.0" encoding="UTF-8"?>
-                <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-                <plist version="1.0">
-                <dict>
-                <key>public-key</key>
-                <data>
-                PLISTEOF
+                printf '%s\n' \
+                  '<?xml version="1.0" encoding="UTF-8"?>' \
+                  '<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+                  '<plist version="1.0">' \
+                  '<dict>' \
+                  '<key>public-key</key>' \
+                  '<data>' > "/tmp/${fp}.plist"
                 sed -e '1d' -e '$d' /tmp/pub.pem >> "/tmp/${fp}.plist"
-                cat << 'PLISTEOF' | sed 's/^[[:space:]]*//' >> "/tmp/${fp}.plist"
-                </data>
-                </dict>
-                </plist>
-                PLISTEOF
+                printf '%s\n' \
+                  '</data>' \
+                  '<key>public-key-size</key>' \
+                  '<integer>4096</integer>' \
+                  '<key>signature-by</key>' \
+                  "<string>${SIGNED_BY}</string>" \
+                  '</dict>' \
+                  '</plist>' >> "/tmp/${fp}.plist"
                 gh release upload "$REPO_TAG" "/tmp/${fp}.plist" /tmp/pub.pem --clobber --repo "$GH_REPO" 2>/dev/null || true
               fi
             fi
