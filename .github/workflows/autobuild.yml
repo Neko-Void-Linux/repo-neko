@@ -187,10 +187,11 @@ jobs:
           # Shlibs y definiciones auxiliares del ecosistema Neko
           echo "#nothing" >> void-packages/common/build-style/none.sh
           cat << 'EOF' >> void-packages/common/shlibs
-          libscenefx-0.5.so scenefx-nk-0.5_1
-          libQt6Pas.so.6 libqt6pas-6.2.10_1
-          libcrypto.so.1.1 libssl1.1-1.1.1w_1
-          EOF
+libscenefx-0.5.so scenefx-nk-0.5_1
+libQt6Pas.so.6 libqt6pas-6.2.10_1
+libcrypto.so.1.1 libssl1.1-1.1.1w_1
+liblsfg-vk-layer.so lsfg-vk-2026.2.0.0_1
+EOF
 
           mkdir -p void-packages/hostdir/binpkgs \
                    void-packages/hostdir/sources \
@@ -229,6 +230,46 @@ jobs:
             gh release download "$REPO_TAG" --pattern '*-repodata*' --repo "$GH_REPO" 2>/dev/null || true
           fi
 
+          # Pre-instalar claves públicas en el sistema para evitar prompts no interactivos de xbps
+          mkdir -p /var/db/xbps/keys
+          gh release download "$REPO_TAG" --pattern '*.plist' --repo "$GH_REPO" --dir /tmp/keys 2>/dev/null || true
+          if [ -d /tmp/keys ] && ls /tmp/keys/*.plist 1>/dev/null 2>&1; then
+            cp -f /tmp/keys/*.plist /var/db/xbps/keys/
+          fi
+
+          if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
+            echo "${{ secrets.XBPS_PRIVATE_KEY }}" > /tmp/privkey.pem
+            chmod 600 /tmp/privkey.pem
+            openssl pkey -in /tmp/privkey.pem -pubout -out /tmp/pub.pem 2>/dev/null || true
+            if [ -f /tmp/pub.pem ]; then
+              kh=$(ssh-keygen -i -m PKCS8 -f /tmp/pub.pem | ssh-keygen -lf - -E md5 2>/dev/null || true)
+              fp=$(echo "$kh" | awk '{print $2}' | sed 's/^MD5://')
+              if [ -n "$fp" ]; then
+                cat << 'PLISTEOF' > "/var/db/xbps/keys/${fp}.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>public-key</key>
+<data>
+PLISTEOF
+                sed -e '1d' -e '$d' /tmp/pub.pem >> "/var/db/xbps/keys/${fp}.plist"
+                cat << 'PLISTEOF' >> "/var/db/xbps/keys/${fp}.plist"
+</data>
+<key>public-key-size</key>
+<integer>4096</integer>
+<key>signature-by</key>
+<string>${{ secrets.SIGNED_BY || 'javierc <SrDicov@gmail.com>' }}</string>
+</dict>
+</plist>
+PLISTEOF
+                chmod 644 "/var/db/xbps/keys/${fp}.plist"
+                echo "Clave pública ${fp}.plist instalada en /var/db/xbps/keys"
+              fi
+            fi
+            rm -f /tmp/privkey.pem /tmp/pub.pem
+          fi
+
           # Indexar binarios locales para resolución de dependencias por xbps-src
           python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" --pre --dir . --arch "$ARCH" || true
           if ls *.xbps 1>/dev/null 2>&1; then
@@ -242,6 +283,8 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if sudo -Eu builder bash -c 'set -o pipefail; cd void-packages && ./xbps-src binary-bootstrap 2>&1 | tail -n 20'; then
+              mkdir -p void-packages/masterdir-x86_64/var/db/xbps/keys
+              cp -f /var/db/xbps/keys/*.plist void-packages/masterdir-x86_64/var/db/xbps/keys/ 2>/dev/null || true
               exit 0
             fi
             echo "Intento de bootstrap $attempt falló; reintentando en 15s..."
@@ -290,6 +333,17 @@ jobs:
               echo "FAIL $pkg (plantilla no encontrada en srcpkgs)"
               failed="$failed $pkg"
               continue
+            fi
+
+            # Si el binario exacto ya existe (compilado previamente como dependencia), omitir
+            if [ -f "void-packages/srcpkgs/$pkg/template" ]; then
+              tpl_ver=$(grep -E '^[[:space:]]*version=' "void-packages/srcpkgs/$pkg/template" | head -n 1 | cut -d= -f2 | tr -d '"'\'' ')
+              tpl_rev=$(grep -E '^[[:space:]]*revision=' "void-packages/srcpkgs/$pkg/template" | head -n 1 | cut -d= -f2 | tr -d '"'\'' ')
+              expected_xbps="${pkg}-${tpl_ver}_${tpl_rev}.${ARCH}.xbps"
+              if [ -f "void-packages/hostdir/binpkgs/$expected_xbps" ]; then
+                echo "INFO $pkg: El binario $expected_xbps ya fue generado previamente (como dependencia); omitiendo compilación redundante."
+                continue
+              fi
             fi
 
             echo "=========================================================="
@@ -528,12 +582,22 @@ jobs:
       - name: Control de Calidad Final
         if: always()
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           failed="${{ steps.build.outputs.failed }}"
           if [ -n "$failed" ]; then
             echo "::error::Los siguientes paquetes fallaron en la compilación:$failed"
             echo "Nota: Todos los demás paquetes que compilaron con éxito ya fueron publicados y están en el release."
             exit 1
+          fi
+
+          if [ "${{ inputs.prune }}" != "false" ]; then
+            echo "Ejecutando poda global de versiones obsoletas y binarios huérfanos..."
+            python3 "$GITHUB_WORKSPACE/.github/scripts/sanitize_repodata.py" \
+              --prune-orphans \
+              --dir void-packages/hostdir/binpkgs \
+              --arch "$ARCH" || true
           fi
 
           echo "Ejecutando verificación estricta de repodata e index.plist..."

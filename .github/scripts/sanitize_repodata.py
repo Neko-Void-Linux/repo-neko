@@ -19,6 +19,7 @@ import os
 import pathlib
 import plistlib
 import re
+import subprocess
 import sys
 import tarfile
 from typing import Dict, Optional, Set
@@ -258,12 +259,75 @@ def verify_repodata(binpkgs_dir: pathlib.Path, arch: str) -> bool:
     return True
 
 
+def prune_orphans(binpkgs_dir: pathlib.Path, arch: str, delete_remote: bool = True) -> int:
+    """
+    Elimina archivos .xbps y sus firmas que no correspondan a la versión activa registrada en index.plist.
+    Si delete_remote es True y GH_REPO / GITHUB_TOKEN están disponibles, también los elimina de GitHub Releases.
+    """
+    repodata_file = binpkgs_dir / f"{arch}-repodata"
+    if not repodata_file.is_file():
+        print(f"[PODA] Repodata {repodata_file.name} no encontrado en {binpkgs_dir}. Omitiendo.")
+        return 0
+
+    members = read_repodata_members(repodata_file)
+    if "index.plist" not in members:
+        print(f"[PODA] Archivo index.plist no encontrado dentro de {repodata_file.name}.")
+        return 0
+
+    index_data = load_plist_safe(members["index.plist"])
+    valid_pkgvers = {entry.get("pkgver") for entry in index_data.values() if "pkgver" in entry}
+
+    gh_repo = os.environ.get("GH_REPO")
+    repo_tag = os.environ.get("REPO_TAG", "stable")
+    gh_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+
+    can_delete_remote = bool(delete_remote and gh_repo and gh_token)
+
+    pruned_count = 0
+    local_files = list(binpkgs_dir.glob(f"*.{arch}.xbps"))
+    for f in sorted(local_files):
+        m = re.match(rf"^(.+)-([^-]+_[0-9]+)\.{re.escape(arch)}\.xbps$", f.name)
+        if not m:
+            continue
+        pname, pver = m.group(1), m.group(2)
+        pkgver = f"{pname}-{pver}"
+
+        # Si no es la versión activa registrada en index.plist
+        if pkgver not in valid_pkgvers:
+            print(f"🗑️ [PODA GLOBAL] Versión huérfana/obsoleta detectada: {f.name}")
+            # Eliminar localmente archivo y firmas
+            for target in [f, f.with_name(f.name + ".sig2"), f.with_name(f.name + ".sig")]:
+                if target.is_file():
+                    try:
+                        target.unlink()
+                    except Exception as e:
+                        print(f"WARN: Error al borrar local {target}: {e}")
+
+            # Eliminar asset remoto de GitHub Release si corresponde
+            if can_delete_remote:
+                for asset in [f.name, f.name + ".sig2"]:
+                    try:
+                        subprocess.run(
+                            ["gh", "release", "delete-asset", repo_tag, asset, "--yes", "--repo", gh_repo],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            check=False,
+                        )
+                    except Exception:
+                        pass
+            pruned_count += 1
+
+    print(f"[PODA GLOBAL] ✅ Total de archivos obsoletos podados: {pruned_count}")
+    return pruned_count
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="XBPS Repodata Sanitizer & Stage Promotor")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--pre", action="store_true", help="Saneamiento pre-index y promoción de stage heredado")
     group.add_argument("--post", action="store_true", help="Promoción post-index de stage.plist hacia index.plist")
     group.add_argument("--verify", action="store_true", help="Validación estricta de index.plist y ausencia de stage.plist")
+    group.add_argument("--prune-orphans", action="store_true", help="Elimina archivos .xbps locales y remotos que no estén en index.plist")
 
     parser.add_argument("--dir", default=".", help="Directorio que contiene el repodata y los .xbps (default: .)")
     parser.add_argument("--arch", default="x86_64", help="Arquitectura objetivo (default: x86_64)")
@@ -280,6 +344,9 @@ def main() -> None:
     elif args.verify:
         success = verify_repodata(binpkgs_dir, args.arch)
         sys.exit(0 if success else 1)
+    elif args.prune_orphans:
+        prune_orphans(binpkgs_dir, args.arch)
+        sys.exit(0)
 
 
 if __name__ == "__main__":
