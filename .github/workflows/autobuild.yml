@@ -234,7 +234,13 @@ jobs:
           mkdir -p /var/db/xbps/keys
           gh release download "$REPO_TAG" --pattern '*.plist' --repo "$GH_REPO" --dir /tmp/keys 2>/dev/null || true
           if [ -d /tmp/keys ] && ls /tmp/keys/*.plist 1>/dev/null 2>&1; then
-            cp -f /tmp/keys/*.plist /var/db/xbps/keys/
+            for k in /tmp/keys/*.plist; do
+              [ -f "$k" ] || continue
+              bname=$(basename "$k")
+              colon_name=$(echo "$bname" | sed -r 's/\./:/g' | sed 's/:plist$/.plist/')
+              cp -f "$k" "/var/db/xbps/keys/$bname"
+              cp -f "$k" "/var/db/xbps/keys/$colon_name"
+            done
           fi
 
           if [ -n "${{ secrets.XBPS_PRIVATE_KEY }}" ]; then
