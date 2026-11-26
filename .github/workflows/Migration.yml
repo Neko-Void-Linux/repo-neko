@@ -22,7 +22,7 @@ on:
         description: 'Descargar estado base desde SourceForge (si es false, usa GitHub Releases)'
         required: true
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
